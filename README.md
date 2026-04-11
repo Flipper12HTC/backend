@@ -1,58 +1,58 @@
 # flipper12-backend
 
-Cerveau central de **Flipper 12** : game engine, bridge MQTT, gateway WebSocket, persistance, intégration Solana.
+Central nervous system of **Flipper 12**: game engine, MQTT bridge, WebSocket gateway, persistence, and Solana integration.
 
-Voir `flipper12-product` pour la spec complète, le CDC et le backlog.
+See `flipper12-product` for the full project spec, CDC, and backlog.
 
 ## Stack
 
 - Node.js 20+ / TypeScript strict
 - Fastify + @fastify/websocket
-- MQTT (`mqtt`, broker Mosquitto via Docker)
-- Cannon.js (`cannon-es`) pour la physique
-- Zod pour la validation et les contrats cross-repo
-- Pino pour le logging structuré
+- MQTT (`mqtt` client, broker: Mosquitto via Docker)
+- Cannon.js (`cannon-es`) for physics
+- Zod for validation and cross-repo contracts
+- Pino for structured logging
 - PostgreSQL (`postgres` by porsager) + Redis (`ioredis`)
-- Test runner natif Node (`node --test`)
+- Native Node test runner (`node --test`)
 
-## Prérequis
+## Prerequisites
 
 - Node.js >= 20
 - npm >= 10
-- Docker Desktop (pour Mosquitto, Postgres, Redis)
+- Docker Desktop (for Mosquitto, Postgres, Redis)
 
 ## Quick start
 
-\`\`\`powershell
+```powershell
 npm install
 npm run dev
-\`\`\`
+```
 
-Les logs de démarrage apparaissent. Pas encore de serveur réel, c'est un skeleton.
+You should see startup logs. No real server yet — this is a skeleton.
 
 ## Scripts
 
-- `npm run dev` — mode dev avec rechargement auto
-- `npm run build` — compilation TypeScript vers `dist/`
-- `npm start` — lance la version compilée
-- `npm run typecheck` — vérif des types sans emit
-- `npm test` — tests via le test runner natif Node
-- `npm run format` — formatage avec Prettier
+- `npm run dev` — dev mode with auto-reload
+- `npm run build` — compile TypeScript to `dist/`
+- `npm start` — run the compiled build
+- `npm run typecheck` — type-check without emitting
+- `npm test` — run native Node test runner
+- `npm run format` — format all files with Prettier
 
 ## Structure
 
-\`\`\`
+```
 src/
-├── server/       Fastify, routes REST, handlers WebSocket
-├── mqtt/         Subscriber MQTT, dispatcher
-├── game/         Game loop, physique, scoring (hot path, budget 16ms)
-├── blockchain/   Client Solana, sessions wallet, workers Anchor
-├── storage/      Adaptateurs PostgreSQL et Redis
-└── shared/       Logger, validation d'env, erreurs
+├── server/       Fastify app, REST routes, WebSocket handlers
+├── mqtt/         MQTT subscriber, message dispatcher
+├── game/         Game loop, physics, scoring (hot path, 16ms budget)
+├── blockchain/   Solana client, wallet sessions, Anchor workers
+├── storage/      PostgreSQL and Redis adapters
+└── shared/       Logger, env validation, errors, utils
 
-contracts/        Schémas Zod partagés (MQTT, WS, REST)
-programs/         Programmes Anchor on-chain (Rust) — vide pour l'instant
-tests/            Tests unitaires et d'intégration
-scripts/          Utilitaires de dev (mock hardware, seed db)
-docker/           Dockerfile et docker-compose.yml — vide pour l'instant
-\`\`\`
+contracts/        Zod schemas shared across repos (MQTT, WS, REST)
+programs/         Anchor on-chain programs (Rust) — empty for now
+tests/            Unit and integration tests
+scripts/          Dev utilities (mock hardware, seed db)
+docker/           Dockerfile and docker-compose.yml — empty for now
+```
