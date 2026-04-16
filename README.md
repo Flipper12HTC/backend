@@ -9,9 +9,7 @@ Voir `flipper12-product` pour la spec complète, le CDC et le backlog.
 - Node.js 20+ / TypeScript strict
 - Fastify + @fastify/websocket
 - MQTT (`mqtt`, broker Mosquitto via Docker)
-- Cannon.js (`cannon-es`) pour la physique
-- Zod pour la validation et les contrats cross-repo
-- Pino pour le logging structuré
+- Rapier (`@dimforge/rapier3d-compat`) pour la physique
 - PostgreSQL (`postgres` by porsager) + Redis (`ioredis`)
 - Test runner natif Node (`node --test`)
 
@@ -23,10 +21,11 @@ Voir `flipper12-product` pour la spec complète, le CDC et le backlog.
 
 ## Quick start
 
-\`\`\`powershell
+```powershell
 npm install
+npm run docker:up
 npm run dev
-\`\`\`
+```
 
 Les logs de démarrage apparaissent. Pas encore de serveur réel, c'est un skeleton.
 
@@ -38,21 +37,23 @@ Les logs de démarrage apparaissent. Pas encore de serveur réel, c'est un skele
 - `npm run typecheck` — vérif des types sans emit
 - `npm test` — tests via le test runner natif Node
 - `npm run format` — formatage avec Prettier
+- `npm run docker:up` — démarre Mosquitto, Postgres, Redis en arrière-plan
+- `npm run docker:down` — stoppe les services Docker
 
 ## Structure
 
-\`\`\`
+```
 src/
 ├── server/       Fastify, routes REST, handlers WebSocket
 ├── mqtt/         Subscriber MQTT, dispatcher
 ├── game/         Game loop, physique, scoring (hot path, budget 16ms)
 ├── blockchain/   Client Solana, sessions wallet, workers Anchor
 ├── storage/      Adaptateurs PostgreSQL et Redis
-└── shared/       Logger, validation d'env, erreurs
+└── shared/       Utils partagés, erreurs
 
-contracts/        Schémas Zod partagés (MQTT, WS, REST)
+contracts/        Contrats partagés (MQTT, WS, REST)
 programs/         Programmes Anchor on-chain (Rust) — vide pour l'instant
 tests/            Tests unitaires et d'intégration
 scripts/          Utilitaires de dev (mock hardware, seed db)
 docker/           Dockerfile et docker-compose.yml — vide pour l'instant
-\`\`\`
+```
