@@ -1,8 +1,8 @@
 # flipper12-backend
 
-Cerveau central de **Flipper 12** : game engine, bridge MQTT, gateway WebSocket, persistance, intégration Solana.
+Central nervous system of **Flipper 12**: game engine, MQTT bridge, WebSocket gateway, persistence, and Solana integration.
 
-Voir `flipper12-product` pour la spec complète, le CDC et le backlog.
+See `flipper12-product` for the full project spec, CDC, and backlog.
 
 ## Stack
 
@@ -11,13 +11,13 @@ Voir `flipper12-product` pour la spec complète, le CDC et le backlog.
 - MQTT (`mqtt`, broker Mosquitto via Docker)
 - Rapier (`@dimforge/rapier3d-compat`) pour la physique
 - PostgreSQL (`postgres` by porsager) + Redis (`ioredis`)
-- Test runner natif Node (`node --test`)
+- Native Node test runner (`node --test`)
 
-## Prérequis
+## Prerequisites
 
 - Node.js >= 20
 - npm >= 10
-- Docker Desktop (pour Mosquitto, Postgres, Redis)
+- Docker Desktop (for Mosquitto, Postgres, Redis)
 
 ## Quick start
 
@@ -27,7 +27,7 @@ npm run docker:up
 npm run dev
 ```
 
-Les logs de démarrage apparaissent. Pas encore de serveur réel, c'est un skeleton.
+You should see startup logs. No real server yet — this is a skeleton.
 
 ## Scripts
 
