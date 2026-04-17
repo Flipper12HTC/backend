@@ -40,6 +40,25 @@ You should see startup logs. No real server yet — this is a skeleton.
 - `npm run docker:up` — démarre Mosquitto, Postgres, Redis en arrière-plan
 - `npm run docker:down` — stoppe les services Docker
 
+## Docker (dev)
+
+Les trois services (Mosquitto, PostgreSQL, Redis) sont définis dans `docker/docker-compose.yml`.
+
+```bash
+# Démarrer les services en arrière-plan
+npm run docker:up
+
+# Vérifier que tout est healthy
+docker compose -f docker/docker-compose.yml ps
+
+# Stopper les services
+npm run docker:down
+```
+
+- Les données Postgres persistent entre `up`/`down` grâce au volume nommé `pgdata`.
+- Pour repartir de zéro : `docker compose -f docker/docker-compose.yml down -v` (supprime le volume).
+- Le broker Mosquitto autorise les connexions anonymes (dev uniquement, voir `docker/mosquitto.conf`).
+
 ## Structure
 
 ```
@@ -55,5 +74,5 @@ contracts/        Contrats partagés (MQTT, WS, REST)
 programs/         Programmes Anchor on-chain (Rust) — vide pour l'instant
 tests/            Tests unitaires et d'intégration
 scripts/          Utilitaires de dev (mock hardware, seed db)
-docker/           Dockerfile et docker-compose.yml — vide pour l'instant
+docker/           docker-compose.yml et config Mosquitto
 ```
