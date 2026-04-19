@@ -1,1 +1,3 @@
-console.log('flipper12-backend');
+import { startServer } from './server/server.js';
+
+await startServer();
