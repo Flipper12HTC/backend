@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Central nervous system of Flipper 12: game engine, MQTT bridge, WebSocket gateway, persistence, Solana",
   "scripts": {
-    "dev": "tsx watch src/index.ts",
+    "dev": "tsx watch --env-file=.env src/index.ts",
     "start": "node dist/index.js",
     "build": "tsc",
     "typecheck": "tsc --noEmit",
