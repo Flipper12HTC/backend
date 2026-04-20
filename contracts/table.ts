@@ -1,6 +1,6 @@
 export const TABLE = {
-  width: 16,
-  depth: 9,
+  width: 9,
+  depth: 16,
   floorThickness: 0.3,
 
   wall: {
@@ -17,7 +17,7 @@ export const TABLE = {
   },
 
   ball: {
-    radius: 0.4,
+    radius: 0.2,
     spawn: { x: 0, y: 0.4, z: 0 },
   },
 } as const;

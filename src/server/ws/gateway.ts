@@ -4,7 +4,7 @@ import type { WebSocket } from '@fastify/websocket';
 const clients = new Set<WebSocket>();
 
 export async function registerGameGateway(app: FastifyInstance): Promise<void> {
-  app.get('/ws/game', { websocket: true }, (socket) => {
+  app.get('/ws', { websocket: true }, (socket) => {
     clients.add(socket);
     app.log.info(`WS client connected (${clients.size} total)`);
 

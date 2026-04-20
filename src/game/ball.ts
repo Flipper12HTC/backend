@@ -5,11 +5,12 @@ const ballBody = world.createRigidBody(
   RAPIER.RigidBodyDesc.dynamic()
     .setTranslation(
       TABLE.ball.spawn.x,
-      TABLE.ball.spawn.y + 5, // spawn en haut
+      TABLE.ball.spawn.y + 1,
       TABLE.ball.spawn.z,
     )
-    .setLinearDamping(0.1)  // légère résistance de l'air
-    .setAngularDamping(0.1),
+    .setLinearDamping(0.1)
+    .setAngularDamping(0.1)
+    .setCcdEnabled(true),
 );
 
 world.createCollider(
@@ -28,7 +29,7 @@ export function resetBall(): void {
   ballBody.setTranslation(
     {
       x: TABLE.ball.spawn.x,
-      y: TABLE.ball.spawn.y + 5,
+      y: TABLE.ball.spawn.y + 1,
       z: TABLE.ball.spawn.z,
     },
     true,
