@@ -1,11 +1,11 @@
-import './game/world.js';
+import { createWorld } from './game/physics.js';
+import { createPlayfield } from './game/playfield.js';
 import { startServer, stopServer, broadcast } from './server/server.js';
-import { createTable } from './game/table.js';
-import './game/ball.js';
 import { startGameLoop } from './game/loop.js';
 import { startMqttClient } from './mqtt/client.js';
 
-createTable();
+await createWorld();
+createPlayfield();
 startGameLoop();
 
 await startServer();

@@ -1,20 +1,11 @@
-import { world } from './world.js';
-import { getBallPosition } from './ball.js';
+import { stepWorld, getBallPosition } from './physics.js';
 import { broadcast } from '../server/server.js';
 
-const TICK_RATE = 1000 / 60; // 60 FPS
+const DT = 1 / 60;
 
 export function startGameLoop(): void {
   setInterval(() => {
-    // Rapier avance la simulation de 16ms
-    world.step();
-
-    // On récupère la position de la bille
-    const pos = getBallPosition();
-
-    broadcast({
-      type: 'ball_position',
-      payload: pos,
-    });
-  }, TICK_RATE);
+    stepWorld(DT);
+    broadcast({ type: 'ball_position', payload: getBallPosition() });
+  }, DT * 1000);
 }
