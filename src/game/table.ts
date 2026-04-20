@@ -1,5 +1,5 @@
 import { world, RAPIER } from './world.js';
-import { TABLE } from '../../contracts/table.ts';
+import { TABLE } from '../../contracts/table.js';
 
 function createWall(
   x: number,
