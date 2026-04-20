@@ -11,7 +11,6 @@ export function startGameLoop(): void {
 
     // On récupère la position de la bille
     const pos = getBallPosition();
-    console.log('ball pos:', pos);
 
     broadcast({
       type: 'ball_position',
