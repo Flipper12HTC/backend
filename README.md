@@ -63,16 +63,32 @@ npm run docker:down
 
 ```
 src/
-├── server/       Fastify, routes REST, handlers WebSocket
-├── mqtt/         Subscriber MQTT, dispatcher
-├── game/         Game loop, physique, scoring (hot path, budget 16ms)
-├── blockchain/   Client Solana, sessions wallet, workers Anchor
-├── storage/      Adaptateurs PostgreSQL et Redis
-└── shared/       Utils partagés, erreurs
+├── domain/           Entités pures — aucune dépendance externe
+├── application/
+│   ├── ports/        Interfaces (PhysicsWorld, GamePublisher, etc.)
+│   └── use-cases/    Logique métier injectée via les ports
+├── infrastructure/   Implémentations concrètes (Rapier, MQTT, WS, Postgres, Solana)
+├── interfaces/
+│   └── http/         Routes Fastify, gateway WebSocket
+└── main.ts           Composition root — seul fichier qui instancie l'infra
 
-contracts/        Contrats partagés (MQTT, WS, REST)
-programs/         Programmes Anchor on-chain (Rust) — vide pour l'instant
-tests/            Tests unitaires et d'intégration
-scripts/          Utilitaires de dev (mock hardware, seed db)
+contracts/        DTOs réseau partagés (MQTT / WS / REST shapes)
+tests/            Tests unitaires (mocks manuels) + intégration
+scripts/          Utilitaires de dev
 docker/           docker-compose.yml et config Mosquitto
 ```
+
+## Architecture
+
+Le backend suit **Clean Architecture** en 4 couches concentriques :
+
+| Couche | Contenu | Peut importer |
+|--------|---------|---------------|
+| `domain/` | Entités, types métier purs | Rien |
+| `application/` | Ports (interfaces) + use cases | `domain/` uniquement |
+| `infrastructure/` | Rapier, MQTT, Fastify WS, Postgres, Redis, Solana | `application/ports/` + `domain/` |
+| `interfaces/` | Routes HTTP, gateway WS | `application/use-cases/` + `domain/` |
+
+**Règle absolue :** `domain/` et `application/` n'importent jamais de framework (Fastify, Rapier, MQTT…). Tout passe par les ports. `src/main.ts` est le seul endroit où les classes concrètes sont instanciées et injectées.
+
+Vérification : `npm run depcheck`.
