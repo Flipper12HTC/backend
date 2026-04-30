@@ -30,9 +30,9 @@ describe('startGame', () => {
     assert.ok(resetCalled, 'resetBall should be called');
   });
 
-  it('broadcasts a tick event', () => {
+  it('broadcasts a score_update event', () => {
     startGame(mockPhysics, mockPublisher);
     assert.ok(published !== null);
-    assert.equal(published!.type, 'tick');
+    assert.equal(published!.type, 'score_update');
   });
 });

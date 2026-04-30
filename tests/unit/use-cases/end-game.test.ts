@@ -12,9 +12,9 @@ const mockPublisher: GamePublisher = {
 describe('endGame', () => {
   beforeEach(() => { published = null; });
 
-  it('broadcasts a tick event', () => {
+  it('broadcasts a game_over event', () => {
     endGame(mockPublisher);
     assert.ok(published !== null);
-    assert.equal(published!.type, 'tick');
+    assert.equal(published!.type, 'game_over');
   });
 });
