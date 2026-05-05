@@ -1,5 +1,6 @@
 import Fastify from 'fastify';
 import websocket from '@fastify/websocket';
+import cors from '@fastify/cors';
 import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from '@fastify/websocket';
 import type { PhysicsWorld } from '../../application/ports/physics-world.js';
@@ -18,6 +19,13 @@ export interface AppDeps {
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({ logger: true });
+  await app.register(cors, {
+    origin: [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://localhost:3002',
+    ],
+  });
   await app.register(websocket);
   registerGateway(app, deps.onWsConnect);
   await registerHealthRoute(app);
