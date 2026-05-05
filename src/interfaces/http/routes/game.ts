@@ -1,10 +1,12 @@
 import type { FastifyInstance } from 'fastify';
-import type { PhysicsWorld } from '../../../application/ports/physics-world.js';
+import type { AppDeps } from '../app.js';
 
 export async function registerGameRoutes(
   app: FastifyInstance,
-  physics: PhysicsWorld,
+  deps: AppDeps,
 ): Promise<void> {
+  const { physics } = deps;
+
   app.get('/game/reset', async () => {
     physics.resetBall();
     return { ok: true };

@@ -6,6 +6,7 @@ import { SolanaClient } from './infrastructure/blockchain/solana-client.js';
 import { buildApp, startApp, stopApp } from './interfaces/http/app.js';
 import { tickGame } from './application/use-cases/tick-game.js';
 import { handleFlipperPress } from './application/use-cases/handle-flipper-press.js';
+import { createInitialState } from './domain/game.js';
 
 const physics = new RapierPhysicsWorld();
 const publisher = new FastifyWsPublisher();
@@ -17,9 +18,13 @@ new SolanaClient();
 
 await physics.init();
 
+const state = createInitialState();
+
 const app = await buildApp({
   onWsConnect: (socket) => publisher.addClient(socket),
   physics,
+  publisher,
+  state,
 });
 
 await startApp(app);
