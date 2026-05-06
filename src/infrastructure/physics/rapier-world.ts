@@ -34,11 +34,7 @@ export class RapierPhysicsWorld implements PhysicsWorld {
 
     this.ballBody = this.world.createRigidBody(
       this.r.RigidBodyDesc.dynamic()
-        .setTranslation(
-          PLAYFIELD.ball.spawn.x,
-          PLAYFIELD.ball.spawn.y + 1,
-          PLAYFIELD.ball.spawn.z,
-        )
+        .setTranslation(PLAYFIELD.ball.spawn.x, PLAYFIELD.ball.spawn.y + 1, PLAYFIELD.ball.spawn.z)
         .setLinearDamping(0.1)
         .setAngularDamping(0.1)
         .setCcdEnabled(true),
@@ -56,31 +52,23 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   }
 
   private buildPlayfield(wallHeight?: number): void {
-    const { width, depth, floorThickness, wall } = PLAYFIELD;
+    const { width, depth, floorThickness, wall, drain } = PLAYFIELD;
     const h = wallHeight ?? wall.height;
 
     this.addWall(0, -floorThickness / 2, 0, width, floorThickness, depth);
     this.addWall(-width / 2, h / 2, 0, wall.thickness, h, depth);
     this.addWall(width / 2, h / 2, 0, wall.thickness, h, depth);
     this.addWall(0, h / 2, -depth / 2, width, h, wall.thickness);
-    this.addWall(0, h / 2, depth / 2, width, h, wall.thickness);
+
+    const segWidth = (width - drain.gap) / 2;
+    const segCenterX = (width + drain.gap) / 4;
+    this.addWall(-segCenterX, h / 2, depth / 2, segWidth, h, wall.thickness);
+    this.addWall(segCenterX, h / 2, depth / 2, segWidth, h, wall.thickness);
   }
 
-  private addWall(
-    x: number,
-    y: number,
-    z: number,
-    w: number,
-    h: number,
-    d: number,
-  ): void {
-    const body = this.world.createRigidBody(
-      this.r.RigidBodyDesc.fixed().setTranslation(x, y, z),
-    );
-    this.world.createCollider(
-      this.r.ColliderDesc.cuboid(w / 2, h / 2, d / 2),
-      body,
-    );
+  private addWall(x: number, y: number, z: number, w: number, h: number, d: number): void {
+    const body = this.world.createRigidBody(this.r.RigidBodyDesc.fixed().setTranslation(x, y, z));
+    this.world.createCollider(this.r.ColliderDesc.cuboid(w / 2, h / 2, d / 2), body);
   }
 
   step(dt: number): void {

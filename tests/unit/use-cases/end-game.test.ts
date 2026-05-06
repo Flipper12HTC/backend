@@ -28,10 +28,7 @@ describe('endGame', () => {
     assert.ok(state.endedAt !== null);
     assert.ok(published !== null);
     assert.equal(published!.type, 'game_over');
-    assert.equal(
-      (published as Extract<GameEvent, { type: 'game_over' }>).payload.finalScore,
-      1234,
-    );
+    assert.equal((published as Extract<GameEvent, { type: 'game_over' }>).payload.finalScore, 1234);
   });
 
   it('does nothing if already over', () => {

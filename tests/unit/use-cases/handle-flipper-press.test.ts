@@ -11,11 +11,15 @@ const mockPhysics: PhysicsWorld = {
   step: () => {},
   getBallPosition: () => ({ x: 0, y: 0, z: 0 }),
   resetBall: () => {},
-  applyFlipperImpulse: (side) => { impulseApplied = side; },
+  applyFlipperImpulse: (side) => {
+    impulseApplied = side;
+  },
 };
 
 describe('handleFlipperPress', () => {
-  beforeEach(() => { impulseApplied = null; });
+  beforeEach(() => {
+    impulseApplied = null;
+  });
 
   it('applies impulse on left flipper', () => {
     handleFlipperPress(mockPhysics, 'left');

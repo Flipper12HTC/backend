@@ -34,7 +34,7 @@ mqttInput.connect();
 
 const DT = 1 / 60;
 setInterval(() => {
-  tickGame(physics, publisher, DT);
+  tickGame(state, physics, publisher, DT);
 }, DT * 1000);
 
 function shutdown(signal: string): void {
