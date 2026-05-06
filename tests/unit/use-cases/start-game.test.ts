@@ -6,28 +6,29 @@ import type { PhysicsWorld } from '../../../src/application/ports/physics-world.
 import type { GamePublisher, GameEvent } from '../../../src/application/ports/game-publisher.js';
 
 let resetCalled = false;
-let published: GameEvent | null = null;
+let published: GameEvent[] = [];
 
 const mockPhysics: PhysicsWorld = {
   init: async () => {},
   step: () => {},
-  getBallPosition: () => ({ x: 0, y: 0, z: 0 }),
+  getBallPosition: () => ({ x: 0, y: 0.4, z: 0 }),
   resetBall: () => {
     resetCalled = true;
   },
-  applyFlipperImpulse: () => {},
+  setFlipperActive: () => {},
+  consumeFlipperHits: () => 0,
 };
 
 const mockPublisher: GamePublisher = {
   broadcast: (event) => {
-    published = event;
+    published.push(event);
   },
 };
 
 describe('startGame', () => {
   beforeEach(() => {
     resetCalled = false;
-    published = null;
+    published = [];
   });
 
   it('passes status to running and resets counters', () => {
@@ -55,11 +56,18 @@ describe('startGame', () => {
 
   it('broadcasts score_update with initial counters', () => {
     startGame(createInitialState(), mockPhysics, mockPublisher);
-    assert.ok(published !== null);
-    assert.equal(published!.type, 'score_update');
-    assert.deepEqual(
-      (published as Extract<GameEvent, { type: 'score_update' }>).payload,
-      { score: 0, ballsLeft: 3, multiplier: 1 },
-    );
+    const score = published.find((e) => e.type === 'score_update');
+    assert.ok(score);
+    assert.deepEqual((score as Extract<GameEvent, { type: 'score_update' }>).payload, {
+      score: 0,
+      ballsLeft: 3,
+      multiplier: 1,
+    });
+  });
+
+  it('broadcasts initial ball_position so frontend can show the ball', () => {
+    startGame(createInitialState(), mockPhysics, mockPublisher);
+    const pos = published.find((e) => e.type === 'ball_position');
+    assert.ok(pos);
   });
 });

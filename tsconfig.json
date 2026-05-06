@@ -14,8 +14,8 @@
     "lib": ["ES2022"],
     "types": ["node"],
     "paths": {
-        "@/*": ["./src/*"]
-        }
+      "@/*": ["./src/*"]
+    }
   },
   "include": ["src", "tests", "contracts"],
   "exclude": ["node_modules", "dist"]

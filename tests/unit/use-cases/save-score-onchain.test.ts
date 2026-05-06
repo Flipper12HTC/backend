@@ -11,12 +11,16 @@ let savedScore: Score | null = null;
 let recordedWallet: string | null = null;
 
 const mockRepo: ScoreRepo = {
-  saveFinal: async (s) => { savedScore = s; },
+  saveFinal: async (s) => {
+    savedScore = s;
+  },
   listTop: async () => [],
 };
 
 const mockChain: ChainClient = {
-  recordScore: async (wallet) => { recordedWallet = wallet; },
+  recordScore: async (wallet) => {
+    recordedWallet = wallet;
+  },
   payoutWinners: async () => {},
 };
 

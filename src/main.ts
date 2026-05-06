@@ -5,7 +5,7 @@ import { PostgresScoreRepo } from './infrastructure/storage/postgres-score-repo.
 import { SolanaClient } from './infrastructure/blockchain/solana-client.js';
 import { buildApp, startApp, stopApp } from './interfaces/http/app.js';
 import { tickGame } from './application/use-cases/tick-game.js';
-import { handleFlipperPress } from './application/use-cases/handle-flipper-press.js';
+import { setFlipperState } from './application/use-cases/set-flipper-state.js';
 import { createInitialState } from './domain/game.js';
 
 const physics = new RapierPhysicsWorld();
@@ -29,12 +29,13 @@ const app = await buildApp({
 
 await startApp(app);
 
-mqttInput.onButtonPress((side) => handleFlipperPress(physics, side));
+mqttInput.onButtonPress((side) => setFlipperState(physics, publisher, side, true));
+mqttInput.onButtonRelease((side) => setFlipperState(physics, publisher, side, false));
 mqttInput.connect();
 
 const DT = 1 / 60;
 setInterval(() => {
-  tickGame(physics, publisher, DT);
+  tickGame(state, physics, publisher, DT);
 }, DT * 1000);
 
 function shutdown(signal: string): void {

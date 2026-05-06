@@ -20,11 +20,7 @@ export interface AppDeps {
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   const app = Fastify({ logger: true });
   await app.register(cors, {
-    origin: [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://localhost:3002',
-    ],
+    origin: ['http://localhost:3000', 'http://localhost:3001', 'http://localhost:3002'],
   });
   await app.register(websocket);
   registerGateway(app, deps.onWsConnect);

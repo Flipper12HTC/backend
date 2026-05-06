@@ -9,8 +9,8 @@ export const TABLE = {
   },
 
   flippers: {
-    left: { x: -3, y: 0.4, z: 3.5 },
-    right: { x: 3, y: 0.4, z: 3.5 },
+    left: { x: -3.5, y: 0.4, z: 5.5 },
+    right: { x: 3.5, y: 0.4, z: 5.5 },
     length: 3,
     restAngle: 0.3,
     activeAngle: -0.5,

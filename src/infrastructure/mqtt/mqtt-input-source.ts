@@ -18,7 +18,10 @@ export class MqttInputSource implements InputSource {
     this.client.on('connect', () => {
       console.log(`[mqtt] connected to ${url}`);
       this.client!.subscribe('flipper/inputs/#', (err) => {
-        if (err) { console.error('[mqtt] subscribe error:', err); return; }
+        if (err) {
+          console.error('[mqtt] subscribe error:', err);
+          return;
+        }
         console.log('[mqtt] subscribed to flipper/inputs/#');
       });
     });
