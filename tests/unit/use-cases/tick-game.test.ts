@@ -10,6 +10,7 @@ import type { GamePublisher, GameEvent } from '../../../src/application/ports/ga
 let stepped = false;
 let resetCalled = false;
 let ballPos: Vec3 = { x: 1, y: 2, z: 3 };
+let hitsToReturn = 0;
 let published: GameEvent[] = [];
 
 const mockPhysics: PhysicsWorld = {
@@ -22,7 +23,12 @@ const mockPhysics: PhysicsWorld = {
     resetCalled = true;
     ballPos = { x: 0, y: 0.4, z: 0 };
   },
-  applyFlipperImpulse: () => {},
+  setFlipperActive: () => {},
+  consumeFlipperHits: () => {
+    const n = hitsToReturn;
+    hitsToReturn = 0;
+    return n;
+  },
 };
 
 const mockPublisher: GamePublisher = {
@@ -36,6 +42,7 @@ describe('tickGame', () => {
     stepped = false;
     resetCalled = false;
     ballPos = { x: 1, y: 2, z: 3 };
+    hitsToReturn = 0;
     published = [];
   });
 
@@ -66,6 +73,24 @@ describe('tickGame', () => {
       y: 2,
       z: 3,
     });
+  });
+
+  it('adds 50 * multiplier per flipper hit and broadcasts score_update', () => {
+    const state = createInitialState();
+    state.status = 'running';
+    state.score = 0;
+    state.multiplier = 1;
+    hitsToReturn = 2;
+
+    tickGame(state, mockPhysics, mockPublisher, 1 / 60);
+
+    assert.equal(state.score, 100);
+    const scoreEvt = published.find((e) => e.type === 'score_update');
+    assert.ok(scoreEvt);
+    assert.equal(
+      (scoreEvt as Extract<GameEvent, { type: 'score_update' }>).payload.score,
+      100,
+    );
   });
 
   it('drains ball, decrements ballsLeft and respawns when balls remain', () => {

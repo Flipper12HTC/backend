@@ -13,5 +13,6 @@ export interface PhysicsWorld {
   step(dt: number): void;
   getBallPosition(): Vec3;
   resetBall(): void;
-  applyFlipperImpulse(side: FlipperSide): void;
+  setFlipperActive(side: FlipperSide, active: boolean): void;
+  consumeFlipperHits(): number;
 }

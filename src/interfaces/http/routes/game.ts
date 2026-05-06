@@ -2,6 +2,12 @@ import type { FastifyInstance } from 'fastify';
 import type { AppDeps } from '../app.js';
 import { startGame } from '../../../application/use-cases/start-game.js';
 import { endGame } from '../../../application/use-cases/end-game.js';
+import { setFlipperState } from '../../../application/use-cases/set-flipper-state.js';
+import type { FlipperSide } from '../../../domain/flipper.js';
+
+function parseSide(raw: unknown): FlipperSide | null {
+  return raw === 'left' || raw === 'right' ? raw : null;
+}
 
 export async function registerGameRoutes(app: FastifyInstance, deps: AppDeps): Promise<void> {
   const { state, physics, publisher } = deps;
@@ -15,6 +21,12 @@ export async function registerGameRoutes(app: FastifyInstance, deps: AppDeps): P
     return { ok: true, status: state.status };
   });
 
+  // TEMP test mode: hard reset of the running game (bound to R key on the screens)
+  app.post('/game/restart', async () => {
+    startGame(state, physics, publisher);
+    return { ok: true, status: state.status };
+  });
+
   app.post('/game/end', async (_req, reply) => {
     if (state.status !== 'running') {
       await reply.code(409).send({ error: 'no game running' });
@@ -22,6 +34,22 @@ export async function registerGameRoutes(app: FastifyInstance, deps: AppDeps): P
     }
     endGame(state, publisher);
     return { ok: true, status: state.status };
+  });
+
+  app.post('/game/flipper/:side/:action', async (req, reply) => {
+    const params = req.params as { side?: unknown; action?: unknown };
+    const side = parseSide(params.side);
+    const action = params.action;
+    if (side === null) {
+      await reply.code(400).send({ error: 'invalid side' });
+      return;
+    }
+    if (action !== 'press' && action !== 'release') {
+      await reply.code(400).send({ error: 'invalid action' });
+      return;
+    }
+    setFlipperState(physics, publisher, side, action === 'press');
+    return { ok: true, side, action };
   });
 
   app.get('/game/state', async () => ({

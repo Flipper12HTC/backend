@@ -18,7 +18,7 @@ export const PLAYFIELD = {
 
   ball: {
     radius: 0.2,
-    spawn: { x: 0, y: 0.4, z: 0 },
+    spawn: { x: 2, y: 0.4, z: 0 },
   },
 
   drain: {

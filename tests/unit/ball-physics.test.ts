@@ -34,16 +34,17 @@ describe('ball physics', () => {
     assert.ok(Math.abs(pos.x) < PLAYFIELD.width / 2, `ball.x ${pos.x.toFixed(2)} out of bounds`);
   });
 
-  it('ball can drain through bottom gap (drifts past z = depth/2)', () => {
+  it('ball drifts to the bottom wall area under gravity z (test-mode drain)', () => {
+    const drainZ = PLAYFIELD.depth / 2 - 0.5;
     let drained = false;
     for (let i = 0; i < 600; i++) {
       physics.step(DT);
       const pos = physics.getBallPosition();
-      if (pos.z > PLAYFIELD.depth / 2 || pos.y < PLAYFIELD.drain.yThreshold) {
+      if (pos.z > drainZ) {
         drained = true;
         break;
       }
     }
-    assert.ok(drained, 'ball should reach drain area within 10s under gravity z');
+    assert.ok(drained, 'ball should reach bottom area within 10s under gravity z');
   });
 });

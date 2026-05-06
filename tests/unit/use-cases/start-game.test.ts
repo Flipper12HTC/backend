@@ -15,7 +15,8 @@ const mockPhysics: PhysicsWorld = {
   resetBall: () => {
     resetCalled = true;
   },
-  applyFlipperImpulse: () => {},
+  setFlipperActive: () => {},
+  consumeFlipperHits: () => 0,
 };
 
 const mockPublisher: GamePublisher = {
