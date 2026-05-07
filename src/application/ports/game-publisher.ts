@@ -36,6 +36,11 @@ export interface FlipperStateEvent {
   payload: { side: FlipperSide; active: boolean };
 }
 
+export interface BallLaunchedEvent {
+  type: 'ball_launched';
+  payload: { force: number };
+}
+
 export type GameEvent =
   | BallPositionEvent
   | ScoreUpdateEvent
@@ -43,7 +48,8 @@ export type GameEvent =
   | BumperHitEvent
   | SlingshotHitEvent
   | GameOverEvent
-  | FlipperStateEvent;
+  | FlipperStateEvent
+  | BallLaunchedEvent;
 
 export interface GamePublisher {
   broadcast(event: GameEvent): void;

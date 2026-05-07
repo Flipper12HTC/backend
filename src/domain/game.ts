@@ -10,6 +10,7 @@ export interface PlayerIdentity {
 export interface GameState {
   status: GameStatus;
   ball: Ball;
+  ballInLane: boolean;
   activeFlipper: FlipperSide | null;
   score: number;
   ballsLeft: number;
@@ -26,6 +27,7 @@ export function createInitialState(): GameState {
   return {
     status: 'idle',
     ball: { position: { x: 0, y: 0.4, z: 0 } },
+    ballInLane: true,
     activeFlipper: null,
     score: 0,
     ballsLeft: INITIAL_BALLS,

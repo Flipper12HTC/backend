@@ -3,6 +3,11 @@ import type { AppDeps } from '../app.js';
 import { startGame } from '../../../application/use-cases/start-game.js';
 import { endGame } from '../../../application/use-cases/end-game.js';
 import { setFlipperState } from '../../../application/use-cases/set-flipper-state.js';
+import {
+  createPlungerState,
+  plungerPress,
+  plungerRelease,
+} from '../../../application/use-cases/launch-ball.js';
 import type { FlipperSide } from '../../../domain/flipper.js';
 
 function parseSide(raw: unknown): FlipperSide | null {
@@ -11,6 +16,7 @@ function parseSide(raw: unknown): FlipperSide | null {
 
 export async function registerGameRoutes(app: FastifyInstance, deps: AppDeps): Promise<void> {
   const { state, physics, publisher } = deps;
+  const plunger = createPlungerState();
 
   app.post('/game/start', async (_req, reply) => {
     if (state.status === 'running') {
@@ -66,5 +72,15 @@ export async function registerGameRoutes(app: FastifyInstance, deps: AppDeps): P
   app.get('/game/reset', async () => {
     physics.resetBall();
     return { ok: true };
+  });
+
+  app.post('/game/plunger/press', async () => {
+    plungerPress(plunger);
+    return { ok: true };
+  });
+
+  app.post('/game/plunger/release', async () => {
+    const force = plungerRelease(plunger, state, physics, publisher);
+    return { ok: true, force };
   });
 }

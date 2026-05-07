@@ -13,6 +13,8 @@ const mockPhysics: PhysicsWorld = {
   step: () => {},
   getBallPosition: () => ({ x: 0, y: 0, z: 0 }),
   resetBall: () => {},
+  applyBallImpulse: () => {},
+  getBallSpeed: () => 0,
   setFlipperActive: (side, active) => {
     lastFlipperCall = { side, active };
   },
