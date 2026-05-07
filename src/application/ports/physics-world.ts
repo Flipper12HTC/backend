@@ -12,7 +12,9 @@ export interface PhysicsWorld {
   init(config?: Partial<BallConfig>): Promise<void>;
   step(dt: number): void;
   getBallPosition(): Vec3;
+  getBallSpeed(): number;
   resetBall(): void;
+  applyBallImpulse(impulse: Vec3): void;
   setFlipperActive(side: FlipperSide, active: boolean): void;
   consumeFlipperHits(): number;
 }

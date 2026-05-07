@@ -60,7 +60,7 @@ export class RapierPhysicsWorld implements PhysicsWorld {
 
     this.ballBody = this.world.createRigidBody(
       this.r.RigidBodyDesc.dynamic()
-        .setTranslation(PLAYFIELD.ball.spawn.x, PLAYFIELD.ball.spawn.y + 1, PLAYFIELD.ball.spawn.z)
+        .setTranslation(PLAYFIELD.ball.spawn.x, PLAYFIELD.ball.spawn.y, PLAYFIELD.ball.spawn.z)
         .setLinearDamping(0.1)
         .setAngularDamping(0.1)
         .setCcdEnabled(true),
@@ -82,20 +82,73 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   }
 
   private buildPlayfield(wallHeight?: number): void {
-    const { width, depth, floorThickness, wall } = PLAYFIELD;
+    const { width, depth, floorThickness, wall, cornerRadius, launchLane } = PLAYFIELD;
     const h = wallHeight ?? wall.height;
+    const halfW = width / 2;
+    const halfD = depth / 2;
+    const r = cornerRadius;
 
     this.addWall(0, -floorThickness / 2, 0, width, floorThickness, depth);
-    this.addWall(-width / 2, h / 2, 0, wall.thickness, h, depth);
-    this.addWall(width / 2, h / 2, 0, wall.thickness, h, depth);
-    this.addWall(0, h / 2, -depth / 2, width, h, wall.thickness);
+
+    // Side walls: shortened at the top to make room for the rounded corners
+    const sideLength = depth - r;
+    const sideCenterZ = r / 2;
+    this.addWall(-halfW, h / 2, sideCenterZ, wall.thickness, h, sideLength);
+    this.addWall(halfW, h / 2, sideCenterZ, wall.thickness, h, sideLength);
+
+    // Top wall: shortened on both sides to make room for the rounded corners
+    const topLength = width - 2 * r;
+    this.addWall(0, h / 2, -halfD, topLength, h, wall.thickness);
+
     // TEMP test mode: bottom wall is closed (no drain gap) until flipper colliders ship
-    this.addWall(0, h / 2, depth / 2, width, h, wall.thickness);
+    this.addWall(0, h / 2, halfD, width, h, wall.thickness);
+
+    // Rounded corners (3 segments per quarter circle)
+    this.addRoundedCorner(halfW - r, -halfD + r, r, h, 'topRight');
+    this.addRoundedCorner(-halfW + r, -halfD + r, r, h, 'topLeft');
+
+    // Launch lane separator (right side, between flippers area and right wall)
+    const sepLength = launchLane.zMax - launchLane.zMin;
+    const sepCenterZ = (launchLane.zMax + launchLane.zMin) / 2;
+    this.addWall(launchLane.separatorX, h / 2, sepCenterZ, wall.thickness, h, sepLength);
   }
 
   private addWall(x: number, y: number, z: number, w: number, h: number, d: number): void {
     const body = this.world.createRigidBody(this.r.RigidBodyDesc.fixed().setTranslation(x, y, z));
     this.world.createCollider(this.r.ColliderDesc.cuboid(w / 2, h / 2, d / 2), body);
+  }
+
+  private addRoundedCorner(
+    cx: number,
+    cz: number,
+    radius: number,
+    height: number,
+    corner: 'topLeft' | 'topRight',
+  ): void {
+    const segments = 3;
+    const thickness = PLAYFIELD.wall.thickness;
+    const chordHalf = radius * Math.sin(Math.PI / (4 * segments));
+    // top-right arc goes from angle 0 (+X) to -PI/2 (-Z); top-left mirrors over X
+    const angleSign = corner === 'topRight' ? -1 : -1;
+    const xSign = corner === 'topRight' ? 1 : -1;
+
+    for (let i = 0; i < segments; i++) {
+      const angle = angleSign * ((i + 0.5) * Math.PI) / (2 * segments);
+      const segX = cx + xSign * radius * Math.cos(angle);
+      const segZ = cz + radius * Math.sin(angle);
+      // tangent to the arc at this angle, oriented in XZ plane
+      const yaw = corner === 'topRight' ? -Math.PI / 2 - angle : Math.PI / 2 + angle;
+
+      const body = this.world.createRigidBody(
+        this.r.RigidBodyDesc.fixed()
+          .setTranslation(segX, height / 2, segZ)
+          .setRotation(quatFromY(yaw)),
+      );
+      this.world.createCollider(
+        this.r.ColliderDesc.cuboid(chordHalf, height / 2, thickness / 2),
+        body,
+      );
+    }
   }
 
   private buildFlipper(side: FlipperSide): FlipperBody {
@@ -165,15 +218,19 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     return { x: pos.x, y: pos.y, z: pos.z };
   }
 
+  getBallSpeed(): number {
+    const v = this.ballBody.linvel();
+    return Math.sqrt(v.x * v.x + v.y * v.y + v.z * v.z);
+  }
+
   resetBall(): void {
-    const spawn = {
-      x: PLAYFIELD.ball.spawn.x,
-      y: PLAYFIELD.ball.spawn.y + 1,
-      z: PLAYFIELD.ball.spawn.z,
-    };
-    this.ballBody.setTranslation(spawn, true);
+    this.ballBody.setTranslation(PLAYFIELD.ball.spawn, true);
     this.ballBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.ballBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
+  }
+
+  applyBallImpulse(impulse: Vec3): void {
+    this.ballBody.applyImpulse({ x: impulse.x, y: impulse.y, z: impulse.z }, true);
   }
 
   setFlipperActive(side: FlipperSide, active: boolean): void {

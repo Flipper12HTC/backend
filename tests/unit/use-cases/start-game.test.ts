@@ -15,6 +15,8 @@ const mockPhysics: PhysicsWorld = {
   resetBall: () => {
     resetCalled = true;
   },
+  applyBallImpulse: () => {},
+  getBallSpeed: () => 0,
   setFlipperActive: () => {},
   consumeFlipperHits: () => 0,
 };
