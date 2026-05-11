@@ -82,7 +82,7 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   }
 
   private buildPlayfield(wallHeight?: number): void {
-    const { width, depth, floorThickness, wall, cornerRadius, launchLane } = PLAYFIELD;
+    const { width, depth, floorThickness, wall, cornerRadius, launchLane, drain } = PLAYFIELD;
     const h = wallHeight ?? wall.height;
     const halfW = width / 2;
     const halfD = depth / 2;
@@ -100,8 +100,12 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     const topLength = width - 2 * r;
     this.addWall(0, h / 2, -halfD, topLength, h, wall.thickness);
 
-    // TEMP test mode: bottom wall is closed (no drain gap) until flipper colliders ship
-    this.addWall(0, h / 2, halfD, width, h, wall.thickness);
+    // Bottom wall: split into two lateral segments leaving a central drain gap
+    // between the flippers so the ball can fall through.
+    const bottomSegmentLength = (width - drain.gap) / 2;
+    const bottomSegmentCenterX = halfW - bottomSegmentLength / 2;
+    this.addWall(-bottomSegmentCenterX, h / 2, halfD, bottomSegmentLength, h, wall.thickness);
+    this.addWall(bottomSegmentCenterX, h / 2, halfD, bottomSegmentLength, h, wall.thickness);
 
     // Rounded corners (3 segments per quarter circle)
     this.addRoundedCorner(halfW - r, -halfD + r, r, h, 'topRight');
