@@ -89,10 +89,7 @@ describe('tickGame', () => {
     assert.equal(state.score, 100);
     const scoreEvt = published.find((e) => e.type === 'score_update');
     assert.ok(scoreEvt);
-    assert.equal(
-      (scoreEvt as Extract<GameEvent, { type: 'score_update' }>).payload.score,
-      100,
-    );
+    assert.equal((scoreEvt as Extract<GameEvent, { type: 'score_update' }>).payload.score, 100);
   });
 
   it('drains ball, decrements ballsLeft and respawns when balls remain', () => {
