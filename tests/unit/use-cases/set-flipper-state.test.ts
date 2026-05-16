@@ -38,19 +38,19 @@ describe('setFlipperState', () => {
     assert.deepEqual(lastFlipperCall, { side: 'left', active: true });
     assert.equal(published.length, 1);
     assert.equal(published[0]!.type, 'flipper_state');
-    assert.deepEqual(
-      (published[0] as Extract<GameEvent, { type: 'flipper_state' }>).payload,
-      { side: 'left', active: true },
-    );
+    assert.deepEqual((published[0] as Extract<GameEvent, { type: 'flipper_state' }>).payload, {
+      side: 'left',
+      active: true,
+    });
   });
 
   it('forwards release to physics and broadcasts inactive flipper_state', () => {
     setFlipperState(mockPhysics, mockPublisher, 'right', false);
     assert.deepEqual(lastFlipperCall, { side: 'right', active: false });
     assert.equal(published.length, 1);
-    assert.deepEqual(
-      (published[0] as Extract<GameEvent, { type: 'flipper_state' }>).payload,
-      { side: 'right', active: false },
-    );
+    assert.deepEqual((published[0] as Extract<GameEvent, { type: 'flipper_state' }>).payload, {
+      side: 'right',
+      active: false,
+    });
   });
 });

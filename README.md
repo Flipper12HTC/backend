@@ -82,12 +82,12 @@ docker/           docker-compose.yml et config Mosquitto
 
 Le backend suit **Clean Architecture** en 4 couches concentriques :
 
-| Couche | Contenu | Peut importer |
-|--------|---------|---------------|
-| `domain/` | Entités, types métier purs | Rien |
-| `application/` | Ports (interfaces) + use cases | `domain/` uniquement |
-| `infrastructure/` | Rapier, MQTT, Fastify WS, Postgres, Redis, Solana | `application/ports/` + `domain/` |
-| `interfaces/` | Routes HTTP, gateway WS | `application/use-cases/` + `domain/` |
+| Couche            | Contenu                                           | Peut importer                        |
+| ----------------- | ------------------------------------------------- | ------------------------------------ |
+| `domain/`         | Entités, types métier purs                        | Rien                                 |
+| `application/`    | Ports (interfaces) + use cases                    | `domain/` uniquement                 |
+| `infrastructure/` | Rapier, MQTT, Fastify WS, Postgres, Redis, Solana | `application/ports/` + `domain/`     |
+| `interfaces/`     | Routes HTTP, gateway WS                           | `application/use-cases/` + `domain/` |
 
 **Règle absolue :** `domain/` et `application/` n'importent jamais de framework (Fastify, Rapier, MQTT…). Tout passe par les ports. `src/main.ts` est le seul endroit où les classes concrètes sont instanciées et injectées.
 

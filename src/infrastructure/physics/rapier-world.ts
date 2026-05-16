@@ -137,7 +137,7 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     const xSign = corner === 'topRight' ? 1 : -1;
 
     for (let i = 0; i < segments; i++) {
-      const angle = angleSign * ((i + 0.5) * Math.PI) / (2 * segments);
+      const angle = (angleSign * ((i + 0.5) * Math.PI)) / (2 * segments);
       const segX = cx + xSign * radius * Math.cos(angle);
       const segZ = cz + radius * Math.sin(angle);
       // tangent to the arc at this angle, oriented in XZ plane
@@ -199,14 +199,15 @@ export class RapierPhysicsWorld implements PhysicsWorld {
       if (!started) return;
       const ball = this.ballColliderHandle;
       const isBallFlipper =
-        (h1 === ball && this.isFlipperHandle(h2)) ||
-        (h2 === ball && this.isFlipperHandle(h1));
+        (h1 === ball && this.isFlipperHandle(h2)) || (h2 === ball && this.isFlipperHandle(h1));
       if (isBallFlipper) this.flipperHits += 1;
     });
   }
 
   private isFlipperHandle(handle: number): boolean {
-    return handle === this.leftFlipper.colliderHandle || handle === this.rightFlipper.colliderHandle;
+    return (
+      handle === this.leftFlipper.colliderHandle || handle === this.rightFlipper.colliderHandle
+    );
   }
 
   private tickFlipper(f: FlipperBody, dt: number): void {
@@ -229,6 +230,13 @@ export class RapierPhysicsWorld implements PhysicsWorld {
 
   resetBall(): void {
     this.ballBody.setTranslation(PLAYFIELD.ball.spawn, true);
+    this.ballBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    this.ballBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
+  }
+
+  /** Test helper: place the ball at an arbitrary position with zero velocity. */
+  setBallPosition(pos: Vec3): void {
+    this.ballBody.setTranslation(pos, true);
     this.ballBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.ballBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }
