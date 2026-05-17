@@ -19,6 +19,7 @@ const mockPhysics: PhysicsWorld = {
     lastFlipperCall = { side, active };
   },
   consumeFlipperHits: () => 0,
+  consumeBumperHits: () => [],
 };
 
 const mockPublisher: GamePublisher = {

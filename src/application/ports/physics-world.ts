@@ -8,6 +8,12 @@ export interface BallConfig {
   friction: number;
 }
 
+export interface BumperHit {
+  id: string;
+  x: number;
+  z: number;
+}
+
 export interface PhysicsWorld {
   init(config?: Partial<BallConfig>): Promise<void>;
   step(dt: number): void;
@@ -17,4 +23,5 @@ export interface PhysicsWorld {
   applyBallImpulse(impulse: Vec3): void;
   setFlipperActive(side: FlipperSide, active: boolean): void;
   consumeFlipperHits(): number;
+  consumeBumperHits(): BumperHit[];
 }

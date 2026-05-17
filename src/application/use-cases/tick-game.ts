@@ -6,10 +6,7 @@ import { PLAYFIELD } from '../../domain/playfield.js';
 // TEMP test mode: drain when the ball is about to touch the bottom wall
 const DRAIN_Z = PLAYFIELD.depth / 2 - 0.5;
 const FLIPPER_HIT_POINTS = 50;
-// Speed and position window in which the ball is considered "back at the plunger" —
-// used to re-arm the plunger when a weak launch sends the ball back to the spawn.
-const REARM_SPEED_THRESHOLD = 0.3;
-const REARM_Z_TOLERANCE = 0.3;
+const BUMPER_HIT_POINTS = 100;
 
 function publishScoreUpdate(state: GameState, publisher: GamePublisher): void {
   publisher.broadcast({
@@ -35,18 +32,23 @@ export function tickGame(
   publisher.broadcast({ type: 'ball_position', payload: pos });
 
   const hits = physics.consumeFlipperHits();
+  const bumperHits = physics.consumeBumperHits();
+  let scoreChanged = false;
   if (hits > 0) {
     state.score += hits * FLIPPER_HIT_POINTS * state.multiplier;
-    publishScoreUpdate(state, publisher);
+    scoreChanged = true;
   }
-
-  // Re-arm the plunger only when the ball is back at the spawn position
-  // (resting against the bottom of the launch lane), not just slow mid-flight.
+  for (const b of bumperHits) {
+    state.score += BUMPER_HIT_POINTS * state.multiplier;
+    publisher.broadcast({ type: 'bumper_hit', payload: { id: b.id, x: b.x, z: b.z } });
+    scoreChanged = true;
+  }
+  if (scoreChanged) publishScoreUpdate(state, publisher);
   if (!state.ballInLane) {
-    const inLane = pos.x > PLAYFIELD.launchLane.separatorX;
-    const atSpawn = pos.z > PLAYFIELD.ball.spawn.z - REARM_Z_TOLERANCE;
-    if (inLane && atSpawn && physics.getBallSpeed() < REARM_SPEED_THRESHOLD) {
-      state.ballInLane = true;
+    const nearMouthX = pos.x > PLAYFIELD.launchLane.separatorX - 0.6;
+    const nearMouthZ = pos.z < PLAYFIELD.launchLane.zMin + 0.5;
+    if (nearMouthX && nearMouthZ) {
+      physics.applyBallImpulse({ x: -3, y: 0, z: 0.5 });
     }
   }
 

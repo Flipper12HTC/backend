@@ -1,6 +1,6 @@
 import { createRequire } from 'module';
 import type * as RapierLib from '@dimforge/rapier3d-compat';
-import type { PhysicsWorld, BallConfig } from '../../application/ports/physics-world.js';
+import type { PhysicsWorld, BallConfig, BumperHit } from '../../application/ports/physics-world.js';
 import type { Vec3 } from '../../domain/ball.js';
 import type { FlipperSide } from '../../domain/flipper.js';
 import { PLAYFIELD } from '../../domain/playfield.js';
@@ -42,6 +42,8 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   private rightFlipper!: FlipperBody;
   private eventQueue!: RapierLib.EventQueue;
   private flipperHits = 0;
+  private bumpers = new Map<number, BumperHit>();
+  private bumperHits: BumperHit[] = [];
 
   async init(config: InitConfig = {}): Promise<void> {
     this.r = _require('@dimforge/rapier3d-compat') as RapierModule;
@@ -79,6 +81,23 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     this.buildPlayfield(config.wallHeight);
     this.leftFlipper = this.buildFlipper('left');
     this.rightFlipper = this.buildFlipper('right');
+    for (const b of PLAYFIELD.bumpers) this.buildBumper(b);
+  }
+
+  private buildBumper(b: { id: string; x: number; z: number; radius: number; scale: number }): void {
+    const radius = b.radius * b.scale;
+    const halfHeight = PLAYFIELD.wall.height / 2;
+    const body = this.world.createRigidBody(
+      this.r.RigidBodyDesc.fixed().setTranslation(b.x, halfHeight, b.z),
+    );
+    const collider = this.world.createCollider(
+      this.r.ColliderDesc.cylinder(halfHeight, radius)
+        .setRestitution(1.2)
+        .setFriction(0.2)
+        .setActiveEvents(this.r.ActiveEvents.COLLISION_EVENTS),
+      body,
+    );
+    this.bumpers.set(collider.handle, { id: b.id, x: b.x, z: b.z });
   }
 
   private buildPlayfield(wallHeight?: number): void {
@@ -103,14 +122,44 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     // TEMP test mode: bottom wall is closed (no drain gap) until flipper colliders ship
     this.addWall(0, h / 2, halfD, width, h, wall.thickness);
 
-    // Rounded corners (3 segments per quarter circle)
+    // Rounded corners (6 segments per quarter circle = smoother, fewer gaps)
     this.addRoundedCorner(halfW - r, -halfD + r, r, h, 'topRight');
     this.addRoundedCorner(-halfW + r, -halfD + r, r, h, 'topLeft');
 
-    // Launch lane separator (right side, between flippers area and right wall)
-    const sepLength = launchLane.zMax - launchLane.zMin;
-    const sepCenterZ = (launchLane.zMax + launchLane.zMin) / 2;
-    this.addWall(launchLane.separatorX, h / 2, sepCenterZ, wall.thickness, h, sepLength);
+    // Launch lane separator removed: the GLB visual owns the lane geometry.
+    // launchLane config (separatorX, zMin, zMax) still used as a region marker
+    // for re-arm logic + drain gating, but no physical wall here.
+
+    // Slingshot/funnel guides: slanted walls from inner table edge down to flipper area.
+    // Right guide stops at the launch-lane edge so the ball can travel up the lane unobstructed.
+    this.addSlantedWallXZ(-launchLane.separatorX, 3, -1.6, 5.8, h, wall.thickness);
+    this.addSlantedWallXZ(launchLane.separatorX, 3, 1.6, 5.8, h, wall.thickness);
+  }
+
+  private addSlantedWallXZ(
+    x1: number,
+    z1: number,
+    x2: number,
+    z2: number,
+    h: number,
+    thickness: number,
+  ): void {
+    const dx = x2 - x1;
+    const dz = z2 - z1;
+    const length = Math.sqrt(dx * dx + dz * dz);
+    const cx = (x1 + x2) / 2;
+    const cz = (z1 + z2) / 2;
+    const yaw = Math.atan2(-dz, dx);
+
+    const body = this.world.createRigidBody(
+      this.r.RigidBodyDesc.fixed()
+        .setTranslation(cx, h / 2, cz)
+        .setRotation(quatFromY(yaw)),
+    );
+    this.world.createCollider(
+      this.r.ColliderDesc.cuboid(length / 2, h / 2, thickness / 2),
+      body,
+    );
   }
 
   private addWall(x: number, y: number, z: number, w: number, h: number, d: number): void {
@@ -125,7 +174,7 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     height: number,
     corner: 'topLeft' | 'topRight',
   ): void {
-    const segments = 3;
+    const segments = 6;
     const thickness = PLAYFIELD.wall.thickness;
     const chordHalf = radius * Math.sin(Math.PI / (4 * segments));
     // top-right arc goes from angle 0 (+X) to -PI/2 (-Z); top-left mirrors over X
@@ -194,10 +243,14 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     this.eventQueue.drainCollisionEvents((h1, h2, started) => {
       if (!started) return;
       const ball = this.ballColliderHandle;
-      const isBallFlipper =
-        (h1 === ball && this.isFlipperHandle(h2)) ||
-        (h2 === ball && this.isFlipperHandle(h1));
-      if (isBallFlipper) this.flipperHits += 1;
+      const other = h1 === ball ? h2 : h2 === ball ? h1 : null;
+      if (other === null) return;
+      if (this.isFlipperHandle(other)) {
+        this.flipperHits += 1;
+        return;
+      }
+      const bumper = this.bumpers.get(other);
+      if (bumper) this.bumperHits.push(bumper);
     });
   }
 
@@ -242,5 +295,11 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     const n = this.flipperHits;
     this.flipperHits = 0;
     return n;
+  }
+
+  consumeBumperHits(): BumperHit[] {
+    const hits = this.bumperHits;
+    this.bumperHits = [];
+    return hits;
   }
 }
