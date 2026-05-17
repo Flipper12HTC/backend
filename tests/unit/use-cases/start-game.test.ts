@@ -19,6 +19,7 @@ const mockPhysics: PhysicsWorld = {
   getBallSpeed: () => 0,
   setFlipperActive: () => {},
   consumeFlipperHits: () => 0,
+  consumeBumperHits: () => [],
 };
 
 const mockPublisher: GamePublisher = {

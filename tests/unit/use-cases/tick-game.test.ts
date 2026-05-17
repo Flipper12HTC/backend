@@ -31,6 +31,7 @@ const mockPhysics: PhysicsWorld = {
     hitsToReturn = 0;
     return n;
   },
+  consumeBumperHits: () => [],
 };
 
 const mockPublisher: GamePublisher = {
