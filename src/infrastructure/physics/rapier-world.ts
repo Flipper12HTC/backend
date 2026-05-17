@@ -101,7 +101,7 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   }
 
   private buildPlayfield(wallHeight?: number): void {
-    const { width, depth, floorThickness, wall, cornerRadius, launchLane } = PLAYFIELD;
+    const { width, depth, floorThickness, wall, cornerRadius, launchLane, drain } = PLAYFIELD;
     const h = wallHeight ?? wall.height;
     const halfW = width / 2;
     const halfD = depth / 2;
@@ -119,8 +119,12 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     const topLength = width - 2 * r;
     this.addWall(0, h / 2, -halfD, topLength, h, wall.thickness);
 
-    // TEMP test mode: bottom wall is closed (no drain gap) until flipper colliders ship
-    this.addWall(0, h / 2, halfD, width, h, wall.thickness);
+    // Bottom wall: split into two lateral segments leaving a central drain gap
+    // between the flippers so the ball can fall through.
+    const bottomSegmentLength = (width - drain.gap) / 2;
+    const bottomSegmentCenterX = halfW - bottomSegmentLength / 2;
+    this.addWall(-bottomSegmentCenterX, h / 2, halfD, bottomSegmentLength, h, wall.thickness);
+    this.addWall(bottomSegmentCenterX, h / 2, halfD, bottomSegmentLength, h, wall.thickness);
 
     // Rounded corners (6 segments per quarter circle = smoother, fewer gaps)
     this.addRoundedCorner(halfW - r, -halfD + r, r, h, 'topRight');
@@ -182,7 +186,7 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     const xSign = corner === 'topRight' ? 1 : -1;
 
     for (let i = 0; i < segments; i++) {
-      const angle = angleSign * ((i + 0.5) * Math.PI) / (2 * segments);
+      const angle = (angleSign * ((i + 0.5) * Math.PI)) / (2 * segments);
       const segX = cx + xSign * radius * Math.cos(angle);
       const segZ = cz + radius * Math.sin(angle);
       // tangent to the arc at this angle, oriented in XZ plane
@@ -255,7 +259,9 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   }
 
   private isFlipperHandle(handle: number): boolean {
-    return handle === this.leftFlipper.colliderHandle || handle === this.rightFlipper.colliderHandle;
+    return (
+      handle === this.leftFlipper.colliderHandle || handle === this.rightFlipper.colliderHandle
+    );
   }
 
   private tickFlipper(f: FlipperBody, dt: number): void {
@@ -278,6 +284,13 @@ export class RapierPhysicsWorld implements PhysicsWorld {
 
   resetBall(): void {
     this.ballBody.setTranslation(PLAYFIELD.ball.spawn, true);
+    this.ballBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    this.ballBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
+  }
+
+  /** Test helper: place the ball at an arbitrary position with zero velocity. */
+  setBallPosition(pos: Vec3): void {
+    this.ballBody.setTranslation(pos, true);
     this.ballBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.ballBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }
