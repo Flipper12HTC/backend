@@ -84,7 +84,13 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     for (const b of PLAYFIELD.bumpers) this.buildBumper(b);
   }
 
-  private buildBumper(b: { id: string; x: number; z: number; radius: number; scale: number }): void {
+  private buildBumper(b: {
+    id: string;
+    x: number;
+    z: number;
+    radius: number;
+    scale: number;
+  }): void {
     const radius = b.radius * b.scale;
     const halfHeight = PLAYFIELD.wall.height / 2;
     const body = this.world.createRigidBody(
@@ -156,10 +162,7 @@ export class RapierPhysicsWorld implements PhysicsWorld {
         .setTranslation(cx, h / 2, cz)
         .setRotation(quatFromY(yaw)),
     );
-    this.world.createCollider(
-      this.r.ColliderDesc.cuboid(length / 2, h / 2, thickness / 2),
-      body,
-    );
+    this.world.createCollider(this.r.ColliderDesc.cuboid(length / 2, h / 2, thickness / 2), body);
   }
 
   private addWall(x: number, y: number, z: number, w: number, h: number, d: number): void {
@@ -182,7 +185,7 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     const xSign = corner === 'topRight' ? 1 : -1;
 
     for (let i = 0; i < segments; i++) {
-      const angle = angleSign * ((i + 0.5) * Math.PI) / (2 * segments);
+      const angle = (angleSign * ((i + 0.5) * Math.PI)) / (2 * segments);
       const segX = cx + xSign * radius * Math.cos(angle);
       const segZ = cz + radius * Math.sin(angle);
       // tangent to the arc at this angle, oriented in XZ plane
@@ -255,7 +258,9 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   }
 
   private isFlipperHandle(handle: number): boolean {
-    return handle === this.leftFlipper.colliderHandle || handle === this.rightFlipper.colliderHandle;
+    return (
+      handle === this.leftFlipper.colliderHandle || handle === this.rightFlipper.colliderHandle
+    );
   }
 
   private tickFlipper(f: FlipperBody, dt: number): void {

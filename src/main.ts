@@ -12,9 +12,14 @@ const physics = new RapierPhysicsWorld();
 const publisher = new FastifyWsPublisher();
 const mqttInput = new MqttInputSource();
 
-// instantiated for future use
-new PostgresScoreRepo();
 new SolanaClient();
+
+const scoreRepo = new PostgresScoreRepo();
+try {
+  await scoreRepo.init();
+} catch (err) {
+  console.error('[score-repo] init failed, scores will not persist:', err);
+}
 
 await physics.init();
 
@@ -25,6 +30,7 @@ const app = await buildApp({
   physics,
   publisher,
   state,
+  scoreRepo,
 });
 
 await startApp(app);
@@ -35,7 +41,7 @@ mqttInput.connect();
 
 const DT = 1 / 60;
 setInterval(() => {
-  tickGame(state, physics, publisher, DT);
+  tickGame(state, physics, publisher, DT, scoreRepo);
 }, DT * 1000);
 
 function shutdown(signal: string): void {
