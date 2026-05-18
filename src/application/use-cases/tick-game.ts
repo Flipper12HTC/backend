@@ -6,7 +6,10 @@ import { PLAYFIELD } from '../../domain/playfield.js';
 // TEMP test mode: drain when the ball is about to touch the bottom wall
 const DRAIN_Z = PLAYFIELD.depth / 2 - 0.5;
 const FLIPPER_HIT_POINTS = 50;
-const BUMPER_HIT_POINTS = 100;
+
+function randomBumperPoints(): number {
+  return Math.floor(Math.random() * 81) + 20;
+}
 
 function publishScoreUpdate(state: GameState, publisher: GamePublisher): void {
   publisher.broadcast({
@@ -39,7 +42,7 @@ export function tickGame(
     scoreChanged = true;
   }
   for (const b of bumperHits) {
-    state.score += BUMPER_HIT_POINTS * state.multiplier;
+    state.score += randomBumperPoints() * state.multiplier;
     publisher.broadcast({ type: 'bumper_hit', payload: { id: b.id, x: b.x, z: b.z } });
     scoreChanged = true;
   }

@@ -92,6 +92,24 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     this.leftFlipper = this.buildFlipper('left');
     this.rightFlipper = this.buildFlipper('right');
     for (const b of PLAYFIELD.bumpers) this.buildBumper(b);
+    for (const wb of PLAYFIELD.wallBumpers) this.buildWallBumper(wb);
+  }
+
+  private buildWallBumper(wb: { id: string; x: number; z: number; length: number }): void {
+    const halfX = 0.09;
+    const halfY = PLAYFIELD.wall.height / 2;
+    const halfZ = wb.length / 2;
+    const body = this.world.createRigidBody(
+      this.r.RigidBodyDesc.fixed().setTranslation(wb.x, halfY, wb.z),
+    );
+    const collider = this.world.createCollider(
+      this.r.ColliderDesc.cuboid(halfX, halfY, halfZ)
+        .setRestitution(1.2)
+        .setFriction(0.2)
+        .setActiveEvents(this.r.ActiveEvents.COLLISION_EVENTS),
+      body,
+    );
+    this.bumpers.set(collider.handle, { id: wb.id, x: wb.x, z: wb.z });
   }
 
   private buildBumper(b: { id: string; x: number; z: number; radius: number; scale: number }): void {

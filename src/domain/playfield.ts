@@ -43,6 +43,13 @@ export const PLAYFIELD = {
     { id: 'b3', x: 0, z: -5, radius: 0.5, scale: 1.2 },
   ],
 
+  wallBumpers: [
+    { id: 'wl1', x: -4.2, z:  1.5, length: 2.0 },
+    { id: 'wl2', x: -4.2, z: -2.5, length: 2.0 },
+    { id: 'wr1', x:  4.2, z:  1.5, length: 2.0 },
+    { id: 'wr2', x:  4.2, z: -2.5, length: 2.0 },
+  ],
+
   drain: {
     gap: 2.5,
     yThreshold: -1,
