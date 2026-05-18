@@ -1,15 +1,24 @@
 import { createRequire } from 'module';
+import { fileURLToPath } from 'url';
+import { dirname, resolve } from 'path';
 import type * as RapierLib from '@dimforge/rapier3d-compat';
 import type { PhysicsWorld, BallConfig, BumperHit } from '../../application/ports/physics-world.js';
 import type { Vec3 } from '../../domain/ball.js';
 import type { FlipperSide } from '../../domain/flipper.js';
 import { PLAYFIELD } from '../../domain/playfield.js';
+import { loadPlayfieldGeometry } from './glb-loader.js';
 
 type RapierModule = typeof RapierLib;
 
 interface InitConfig extends Partial<BallConfig> {
   wallHeight?: number;
+  playfieldGlbPath?: string;
 }
+
+const DEFAULT_GLB_PATH = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../assets/models/BaseFlipper.glb',
+);
 
 interface FlipperBody {
   body: RapierLib.RigidBody;
@@ -22,6 +31,7 @@ interface FlipperBody {
 
 const FLIPPER_HALF_HEIGHT = 0.25;
 const FLIPPER_HALF_THICKNESS = 0.2;
+const FLIPPER_BORDER_RADIUS = 0.04;
 const FLIPPER_ROTATION_SPEED = 18;
 const FLIPPER_RESTITUTION = 0.6;
 const FLIPPER_FRICTION = 0.4;
@@ -78,7 +88,7 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     );
     this.ballColliderHandle = ballCollider.handle;
 
-    this.buildPlayfield(config.wallHeight);
+    await this.buildPlayfieldFromGlb(config.playfieldGlbPath ?? DEFAULT_GLB_PATH);
     this.leftFlipper = this.buildFlipper('left');
     this.rightFlipper = this.buildFlipper('right');
     for (const b of PLAYFIELD.bumpers) this.buildBumper(b);
@@ -100,108 +110,30 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     this.bumpers.set(collider.handle, { id: b.id, x: b.x, z: b.z });
   }
 
-  private buildPlayfield(wallHeight?: number): void {
-    const { width, depth, floorThickness, wall, cornerRadius, launchLane, drain } = PLAYFIELD;
-    const h = wallHeight ?? wall.height;
-    const halfW = width / 2;
-    const halfD = depth / 2;
-    const r = cornerRadius;
+  private async buildPlayfieldFromGlb(path: string): Promise<void> {
+    const geom = await loadPlayfieldGeometry(path, {
+      targetWidth: PLAYFIELD.width,
+      targetDepth: PLAYFIELD.depth,
+    });
 
-    this.addWall(0, -floorThickness / 2, 0, width, floorThickness, depth);
-
-    // Side walls: shortened at the top to make room for the rounded corners
-    const sideLength = depth - r;
-    const sideCenterZ = r / 2;
-    this.addWall(-halfW, h / 2, sideCenterZ, wall.thickness, h, sideLength);
-    this.addWall(halfW, h / 2, sideCenterZ, wall.thickness, h, sideLength);
-
-    // Top wall: shortened on both sides to make room for the rounded corners
-    const topLength = width - 2 * r;
-    this.addWall(0, h / 2, -halfD, topLength, h, wall.thickness);
-
-    // Bottom wall: split into two lateral segments leaving a central drain gap
-    // between the flippers so the ball can fall through.
-    const bottomSegmentLength = (width - drain.gap) / 2;
-    const bottomSegmentCenterX = halfW - bottomSegmentLength / 2;
-    this.addWall(-bottomSegmentCenterX, h / 2, halfD, bottomSegmentLength, h, wall.thickness);
-    this.addWall(bottomSegmentCenterX, h / 2, halfD, bottomSegmentLength, h, wall.thickness);
-
-    // Rounded corners (6 segments per quarter circle = smoother, fewer gaps)
-    this.addRoundedCorner(halfW - r, -halfD + r, r, h, 'topRight');
-    this.addRoundedCorner(-halfW + r, -halfD + r, r, h, 'topLeft');
-
-    // Launch lane separator removed: the GLB visual owns the lane geometry.
-    // launchLane config (separatorX, zMin, zMax) still used as a region marker
-    // for re-arm logic + drain gating, but no physical wall here.
-
-    // Slingshot/funnel guides: slanted walls from inner table edge down to flipper area.
-    // Right guide stops at the launch-lane edge so the ball can travel up the lane unobstructed.
-    this.addSlantedWallXZ(-launchLane.separatorX, 3, -1.6, 5.8, h, wall.thickness);
-    this.addSlantedWallXZ(launchLane.separatorX, 3, 1.6, 5.8, h, wall.thickness);
+    // Sol = floor (low friction so the ball can roll/slide).
+    this.addTrimesh(geom.sol.vertices, geom.sol.indices, { friction: 0.1, restitution: 0.2 });
+    // Murs = walls (bouncy, low friction so the ball glances off).
+    this.addTrimesh(geom.murs.vertices, geom.murs.indices, { friction: 0.05, restitution: 0.6 });
   }
 
-  private addSlantedWallXZ(
-    x1: number,
-    z1: number,
-    x2: number,
-    z2: number,
-    h: number,
-    thickness: number,
+  private addTrimesh(
+    vertices: Float32Array,
+    indices: Uint32Array,
+    opts: { friction: number; restitution: number },
   ): void {
-    const dx = x2 - x1;
-    const dz = z2 - z1;
-    const length = Math.sqrt(dx * dx + dz * dz);
-    const cx = (x1 + x2) / 2;
-    const cz = (z1 + z2) / 2;
-    const yaw = Math.atan2(-dz, dx);
-
-    const body = this.world.createRigidBody(
-      this.r.RigidBodyDesc.fixed()
-        .setTranslation(cx, h / 2, cz)
-        .setRotation(quatFromY(yaw)),
-    );
+    const body = this.world.createRigidBody(this.r.RigidBodyDesc.fixed());
     this.world.createCollider(
-      this.r.ColliderDesc.cuboid(length / 2, h / 2, thickness / 2),
+      this.r.ColliderDesc.trimesh(vertices, indices)
+        .setFriction(opts.friction)
+        .setRestitution(opts.restitution),
       body,
     );
-  }
-
-  private addWall(x: number, y: number, z: number, w: number, h: number, d: number): void {
-    const body = this.world.createRigidBody(this.r.RigidBodyDesc.fixed().setTranslation(x, y, z));
-    this.world.createCollider(this.r.ColliderDesc.cuboid(w / 2, h / 2, d / 2), body);
-  }
-
-  private addRoundedCorner(
-    cx: number,
-    cz: number,
-    radius: number,
-    height: number,
-    corner: 'topLeft' | 'topRight',
-  ): void {
-    const segments = 6;
-    const thickness = PLAYFIELD.wall.thickness;
-    const chordHalf = radius * Math.sin(Math.PI / (4 * segments));
-    // top-right arc goes from angle 0 (+X) to -PI/2 (-Z); top-left mirrors over X
-    const angleSign = corner === 'topRight' ? -1 : -1;
-    const xSign = corner === 'topRight' ? 1 : -1;
-
-    for (let i = 0; i < segments; i++) {
-      const angle = (angleSign * ((i + 0.5) * Math.PI)) / (2 * segments);
-      const segX = cx + xSign * radius * Math.cos(angle);
-      const segZ = cz + radius * Math.sin(angle);
-      // tangent to the arc at this angle, oriented in XZ plane
-      const yaw = corner === 'topRight' ? -Math.PI / 2 - angle : Math.PI / 2 + angle;
-
-      const body = this.world.createRigidBody(
-        this.r.RigidBodyDesc.fixed()
-          .setTranslation(segX, height / 2, segZ)
-          .setRotation(quatFromY(yaw)),
-      );
-      this.world.createCollider(
-        this.r.ColliderDesc.cuboid(chordHalf, height / 2, thickness / 2),
-        body,
-      );
-    }
   }
 
   private buildFlipper(side: FlipperSide): FlipperBody {
@@ -220,7 +152,12 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     );
 
     const collider = this.world.createCollider(
-      this.r.ColliderDesc.cuboid(halfLength, FLIPPER_HALF_HEIGHT, FLIPPER_HALF_THICKNESS)
+      this.r.ColliderDesc.roundCuboid(
+        halfLength,
+        FLIPPER_HALF_HEIGHT,
+        FLIPPER_HALF_THICKNESS,
+        FLIPPER_BORDER_RADIUS,
+      )
         .setTranslation(dir * halfLength, 0, 0)
         .setRestitution(FLIPPER_RESTITUTION)
         .setFriction(FLIPPER_FRICTION)
@@ -247,8 +184,8 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     this.eventQueue.drainCollisionEvents((h1, h2, started) => {
       if (!started) return;
       const ball = this.ballColliderHandle;
-      const other = h1 === ball ? h2 : h2 === ball ? h1 : null;
-      if (other === null) return;
+      const other = h1 === ball ? h2 : h2 === ball ? h1 : -1;
+      if (other === -1) return;
       if (this.isFlipperHandle(other)) {
         this.flipperHits += 1;
         return;

@@ -16,6 +16,8 @@ describe('ball physics', () => {
   });
 
   it('ball falls under gravity', () => {
+    // Spawn sits close to the GLB floor, so lift the ball before measuring.
+    physics.setBallPosition({ x: 0, y: 5, z: 0 });
     const start = physics.getBallPosition();
     for (let i = 0; i < 10; i++) physics.step(DT);
     const after = physics.getBallPosition();
