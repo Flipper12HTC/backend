@@ -7,10 +7,17 @@ import type { Vec3 } from '../../../src/domain/ball.js';
 import type { PhysicsWorld } from '../../../src/application/ports/physics-world.js';
 import type { GamePublisher, GameEvent } from '../../../src/application/ports/game-publisher.js';
 
+interface BumperHit {
+  id: string;
+  x: number;
+  z: number;
+}
+
 let stepped = false;
 let resetCalled = false;
 let ballPos: Vec3 = { x: 1, y: 2, z: 3 };
 let hitsToReturn = 0;
+let bumperHitsToReturn: BumperHit[] = [];
 let published: GameEvent[] = [];
 
 const mockPhysics: PhysicsWorld = {
@@ -31,7 +38,11 @@ const mockPhysics: PhysicsWorld = {
     hitsToReturn = 0;
     return n;
   },
-  consumeBumperHits: () => [],
+  consumeBumperHits: () => {
+    const hits = bumperHitsToReturn;
+    bumperHitsToReturn = [];
+    return hits;
+  },
 };
 
 const mockPublisher: GamePublisher = {
@@ -46,6 +57,7 @@ describe('tickGame', () => {
     resetCalled = false;
     ballPos = { x: 1, y: 2, z: 3 };
     hitsToReturn = 0;
+    bumperHitsToReturn = [];
     published = [];
   });
 
@@ -120,6 +132,55 @@ describe('tickGame', () => {
     assert.equal(state.ballsLeft, 2);
     const drained = published.find((e) => e.type === 'ball_drained');
     assert.ok(drained);
+  });
+
+  it('activates x3 boost after 10 bumper hits and broadcasts boost_changed', () => {
+    const state = createInitialState();
+    state.status = 'running';
+    state.bumperStreak = 9; // one more hit reaches the threshold
+    bumperHitsToReturn = [{ id: 'b1', x: 0, z: -3 }];
+
+    tickGame(state, mockPhysics, mockPublisher, 1 / 60);
+
+    assert.equal(state.multiplier, 3);
+    assert.ok(state.boostEndsAt !== null, 'boostEndsAt should be set');
+    assert.equal(state.bumperStreak, 0, 'streak resets after boost');
+    const boost = published.find((e) => e.type === 'boost_changed');
+    assert.ok(boost);
+    const payload = (boost as Extract<GameEvent, { type: 'boost_changed' }>).payload;
+    assert.equal(payload.active, true);
+    assert.equal(payload.multiplier, 3);
+  });
+
+  it('does not count bumper hits toward a new boost while already boosting', () => {
+    const state = createInitialState();
+    state.status = 'running';
+    state.multiplier = 3;
+    state.boostEndsAt = Date.now() + 10_000;
+    bumperHitsToReturn = [{ id: 'b1', x: 0, z: -3 }];
+
+    tickGame(state, mockPhysics, mockPublisher, 1 / 60);
+
+    assert.equal(state.bumperStreak, 0, 'streak must stay 0 during boost');
+    assert.equal(state.multiplier, 3, 'still boosting');
+  });
+
+  it('ends the boost and reverts multiplier once the window expires', () => {
+    const state = createInitialState();
+    state.status = 'running';
+    state.multiplier = 3;
+    state.boostEndsAt = Date.now() - 1; // already expired
+
+    tickGame(state, mockPhysics, mockPublisher, 1 / 60);
+
+    assert.equal(state.multiplier, 1);
+    assert.equal(state.boostEndsAt, null);
+    const boostEnd = published.find(
+      (e) =>
+        e.type === 'boost_changed' &&
+        (e as Extract<GameEvent, { type: 'boost_changed' }>).payload.active === false,
+    );
+    assert.ok(boostEnd, 'a boost_changed{active:false} should be broadcast');
   });
 
   it('transitions to over and emits game_over when last ball drains', () => {

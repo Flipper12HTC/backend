@@ -1,6 +1,12 @@
 import type { PhysicsWorld } from '../ports/physics-world.js';
 import type { GamePublisher } from '../ports/game-publisher.js';
 import type { GameState } from '../../domain/game.js';
+import {
+  BOOST_DURATION_MS,
+  BOOST_MULTIPLIER,
+  BOOST_THRESHOLD,
+  INITIAL_MULTIPLIER,
+} from '../../domain/game.js';
 import { PLAYFIELD } from '../../domain/playfield.js';
 
 // TEMP test mode: drain when the ball is about to touch the bottom wall
@@ -19,6 +25,25 @@ function publishScoreUpdate(state: GameState, publisher: GamePublisher): void {
   });
 }
 
+function activateBoost(state: GameState, publisher: GamePublisher, now: number): void {
+  state.multiplier = BOOST_MULTIPLIER;
+  state.boostEndsAt = now + BOOST_DURATION_MS;
+  state.bumperStreak = 0;
+  publisher.broadcast({
+    type: 'boost_changed',
+    payload: { active: true, multiplier: BOOST_MULTIPLIER, durationMs: BOOST_DURATION_MS },
+  });
+}
+
+function endBoost(state: GameState, publisher: GamePublisher): void {
+  state.multiplier = INITIAL_MULTIPLIER;
+  state.boostEndsAt = null;
+  publisher.broadcast({
+    type: 'boost_changed',
+    payload: { active: false, multiplier: INITIAL_MULTIPLIER, durationMs: 0 },
+  });
+}
+
 export function tickGame(
   state: GameState,
   physics: PhysicsWorld,
@@ -26,6 +51,14 @@ export function tickGame(
   dt: number,
 ): void {
   if (state.status !== 'running') return;
+
+  const now = Date.now();
+
+  // Expire an active boost before scoring this tick.
+  if (state.boostEndsAt !== null && now >= state.boostEndsAt) {
+    endBoost(state, publisher);
+    publishScoreUpdate(state, publisher);
+  }
 
   physics.step(dt);
   const pos = physics.getBallPosition();
@@ -42,6 +75,15 @@ export function tickGame(
     state.score += BUMPER_HIT_POINTS * state.multiplier;
     publisher.broadcast({ type: 'bumper_hit', payload: { id: b.id, x: b.x, z: b.z } });
     scoreChanged = true;
+
+    // Count toward the boost only while not already boosting; reaching the
+    // threshold flips the multiplier to x3 for the boost window.
+    if (state.boostEndsAt === null) {
+      state.bumperStreak += 1;
+      if (state.bumperStreak >= BOOST_THRESHOLD) {
+        activateBoost(state, publisher, now);
+      }
+    }
   }
   if (scoreChanged) publishScoreUpdate(state, publisher);
   if (!state.ballInLane) {

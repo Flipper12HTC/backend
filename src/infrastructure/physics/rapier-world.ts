@@ -102,7 +102,7 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     );
     const collider = this.world.createCollider(
       this.r.ColliderDesc.cylinder(halfHeight, radius)
-        .setRestitution(1.2)
+        .setRestitution(1.45)
         .setFriction(0.2)
         .setActiveEvents(this.r.ActiveEvents.COLLISION_EVENTS),
       body,
