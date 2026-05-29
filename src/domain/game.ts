@@ -15,6 +15,8 @@ export interface GameState {
   score: number;
   ballsLeft: number;
   multiplier: number;
+  bumperStreak: number;
+  boostEndsAt: number | null;
   player: PlayerIdentity;
   startedAt: number | null;
   endedAt: number | null;
@@ -22,6 +24,11 @@ export interface GameState {
 
 export const INITIAL_BALLS = 3;
 export const INITIAL_MULTIPLIER = 1;
+
+// Boost: hit the jellyfish bumpers this many times to trigger an x3 multiplier.
+export const BOOST_THRESHOLD = 10;
+export const BOOST_MULTIPLIER = 3;
+export const BOOST_DURATION_MS = 30_000;
 
 export function createInitialState(): GameState {
   return {
@@ -32,6 +39,8 @@ export function createInitialState(): GameState {
     score: 0,
     ballsLeft: INITIAL_BALLS,
     multiplier: INITIAL_MULTIPLIER,
+    bumperStreak: 0,
+    boostEndsAt: null,
     player: { wallet: null },
     startedAt: null,
     endedAt: null,

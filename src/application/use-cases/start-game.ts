@@ -8,6 +8,8 @@ export function startGame(state: GameState, physics: PhysicsWorld, publisher: Ga
   state.score = 0;
   state.ballsLeft = INITIAL_BALLS;
   state.multiplier = INITIAL_MULTIPLIER;
+  state.bumperStreak = 0;
+  state.boostEndsAt = null;
   state.activeFlipper = null;
   state.ballInLane = true;
   state.startedAt = Date.now();
