@@ -17,7 +17,7 @@ interface InitConfig extends Partial<BallConfig> {
 
 const DEFAULT_GLB_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  '../../../assets/models/BaseFlipper.glb',
+  '../../../assets/models/pinball_map_v5.glb',
 );
 
 interface FlipperBody {
@@ -116,11 +116,109 @@ export class RapierPhysicsWorld implements PhysicsWorld {
       targetDepth: PLAYFIELD.depth,
     });
 
-    // Sol = floor (low friction so the ball can roll/slide).
+    // Sol = GLB floor trimesh (inclined surface, exact map geometry).
     this.addTrimesh(geom.sol.vertices, geom.sol.indices, { friction: 0.1, restitution: 0.2 });
-    // Murs = walls (bouncy, low friction so the ball glances off).
+    // Inclined safety floor: thick box that follows the table's actual tilt computed from the
+    // extracted floor vertices. Catches balls that tunnel through the thin trimesh and places
+    // them at the correct visual height instead of the old flat Y=0 backup.
+    this.addInclinedFloor(geom.sol.vertices);
+    // Murs = walls from GLB (bouncy, low friction so the ball glances off).
     this.addTrimesh(geom.murs.vertices, geom.murs.indices, { friction: 0.05, restitution: 0.6 });
+    // Rampes = full ramp geometry (all face angles) so the ball rolls through the channel.
+    if (geom.rampe && geom.rampe.vertices.length > 0) {
+      this.addTrimesh(geom.rampe.vertices, geom.rampe.indices, { friction: 0.05, restitution: 0.4 });
+    }
+    // Solid box boundaries: the GLB outer wall has only 2 triangles on the far end and 6 per
+    // side wall — too sparse to reliably stop a fast ball. Box colliders are the safety net.
+    this.buildBoundaryWalls();
+    // Lane separator: clean box wall between the shoot lane and the main playfield.
+    // The GLB floor edge at that X had phantom triangles inside the lane — replaced by a box.
+    // The separator stops just short of the far end (leaves an opening so the ball can
+    // enter the playfield after travelling up the full lane).
+    this.addLaneSeparator();
   }
+
+  private addLaneSeparator(): void {
+    const sep = PLAYFIELD.launchLane.separatorX;   // 3.5
+    const halfH = PLAYFIELD.wall.height / 2;
+    const halfD = PLAYFIELD.depth / 2;             // 8.0
+    // Opening at the top: last 1.5 units (Z < -6.5) left open for ball entry.
+    const openingZ = -6.5;
+    const wallCenterZ = (openingZ + halfD) / 2;    // center between -6.5 and +8 = 0.75
+    const wallHalfD = halfD - wallCenterZ;          // half-length = 8.0 - 0.75 = 7.25
+    this.addBoxWall(sep, halfH, wallCenterZ, 0.05, halfH, wallHalfD);
+  }
+
+  private buildBoundaryWalls(): void {
+    const halfW = PLAYFIELD.width / 2;         // 4.5
+    const halfD = PLAYFIELD.depth / 2;         // 8.0
+    const halfH = PLAYFIELD.wall.height / 2;   // 2.65
+    const t = 0.15;
+    const sep = PLAYFIELD.launchLane.separatorX; // 3.5
+
+    // Far end (Z=-8).
+    this.addBoxWall(0, halfH, -halfD, halfW + t, halfH, t);
+    // Left outer wall.
+    this.addBoxWall(-halfW, halfH, 0, t, halfH, halfD + t);
+    // Right outer wall.
+    this.addBoxWall(halfW, halfH, 0, t, halfH, halfD + t);
+    // Bottom wall of launch lane only (Z=+8, X=sep→halfW).
+    // Keeps the ball in the lane at spawn; centre stays open for normal drain.
+    const laneHalfX = (halfW - sep) / 2;
+    const laneCenterX = sep + laneHalfX;
+    this.addBoxWall(laneCenterX, halfH, halfD, laneHalfX, halfH, t);
+  }
+
+  private addInclinedFloor(solVertices: Float32Array): void {
+    // Linear regression: compute slope dY/dZ from the extracted floor vertices.
+    // For our inclined table the drain end (Z=+halfD) is lower, far end (Z=-halfD) is higher.
+    let sZ = 0, sY = 0, sZZ = 0, sZY = 0, n = 0;
+    for (let i = 0; i < solVertices.length; i += 3) {
+      const y = solVertices[i + 1]!;
+      const z = solVertices[i + 2]!;
+      sZ += z; sY += y; sZZ += z * z; sZY += z * y; n++;
+    }
+    const slope = n > 1 ? (n * sZY - sZ * sY) / (n * sZZ - sZ * sZ) : 0; // dY/dZ, negative
+
+    const tiltAngle = Math.atan(Math.abs(slope)); // always positive angle
+    const s = Math.sin(tiltAngle);
+    const c = Math.cos(tiltAngle);
+    const halfW = PLAYFIELD.width / 2 + 0.2;
+    const halfH = 0.5;                                 // 1 unit thick — no tunneling
+    const halfD = PLAYFIELD.depth / 2 + 0.2;
+    const halfD_local = halfD / c;                     // extend in rotated frame to cover full depth
+
+    // Place the drain edge (box local +Z end) at physics Y=0, Z≈+halfD.
+    const centerY = halfD_local * s - halfH * c;
+
+    // Positive rotation around X: drain (+Z) goes down, far end (-Z) goes up.
+    const half = tiltAngle / 2;
+    const body = this.world.createRigidBody(
+      this.r.RigidBodyDesc.fixed()
+        .setTranslation(0, centerY, 0)
+        .setRotation({ x: Math.sin(half), y: 0, z: 0, w: Math.cos(half) }),
+    );
+    this.world.createCollider(
+      this.r.ColliderDesc.cuboid(halfW, halfH, halfD_local)
+        .setFriction(0.1)
+        .setRestitution(0.2),
+      body,
+    );
+  }
+
+  private addBoxWall(
+    cx: number, cy: number, cz: number,
+    hx: number, hy: number, hz: number,
+  ): void {
+    const body = this.world.createRigidBody(
+      this.r.RigidBodyDesc.fixed().setTranslation(cx, cy, cz),
+    );
+    this.world.createCollider(
+      this.r.ColliderDesc.cuboid(hx, hy, hz).setFriction(0.05).setRestitution(0.6),
+      body,
+    );
+  }
+
 
   private addTrimesh(
     vertices: Float32Array,

@@ -8,6 +8,7 @@ export interface MeshGeometry {
 export interface PlayfieldGeometry {
   sol: MeshGeometry;
   murs: MeshGeometry;
+  rampe: MeshGeometry | null;
 }
 
 export interface LoadOptions {
@@ -16,15 +17,20 @@ export interface LoadOptions {
 }
 
 /**
- * Load playfield meshes from a GLB and apply the same scale/center transform
- * the front-end uses when adding the model to the Three.js scene:
- *   1. Compute scene bbox.
- *   2. Scale x→targetWidth/sceneW, z→targetDepth/sceneD, y=avg(sx,sz).
- *   3. Center on x and z.
- *   4. Align bottom (min.y) to y=0.
+ * Load playfield meshes from pinball_map_FINAL.glb.
  *
- * Returns Sol_Mesh and Murs_Mesh as flat vertex/index arrays suitable for
- * Rapier `ColliderDesc.trimesh(vertices, indices)`.
+ * Coordinate remapping (GLB uses Z-up, Blender XY plane = table surface):
+ *   GLB X → physics X  (table width, left-right)
+ *   GLB Z → physics Y  (elevation / height, Z-up in GLB → Y-up in Rapier)
+ *   GLB Y → physics Z  (table depth, negated so drain = +Z)
+ *
+ * Scale / centering applied:
+ *   1. Compute bbox from physics-relevant meshes only.
+ *   2. scaleX = targetWidth  / glbXRange
+ *      scaleZ = targetDepth  / glbYRange  (GLB Y = depth)
+ *      scaleY = avg(scaleX, scaleZ)        (height preserves aspect ratio)
+ *   3. Center on physics X and Z.
+ *   4. Align floor (glbZ min) to physics Y = 0.
  */
 export async function loadPlayfieldGeometry(
   path: string,
@@ -33,6 +39,11 @@ export async function loadPlayfieldGeometry(
   const io = new NodeIO();
   const doc = await io.read(path);
   const root = doc.getRoot();
+
+  // Only these meshes drive the scene bounding box used for scaling.
+  // col_floor_playfield_blue spans the full table (X:0→28.58, Y:-0.92→50.62, depth=51.53)
+  // matching the frontend scene bbox — keeps physics/visual coords aligned.
+  const BBOX_MESHES = ['col_floor_playfield_blue', 'flipper_left', 'flipper_right'];
 
   let sceneMinX = Infinity,
     sceneMinY = Infinity,
@@ -43,6 +54,8 @@ export async function loadPlayfieldGeometry(
 
   const meshNodes = root.listNodes().filter((n) => n.getMesh() !== null);
   for (const node of meshNodes) {
+    const name = node.getName() ?? '';
+    if (!BBOX_MESHES.some((m) => name.includes(m))) continue;
     const mesh = node.getMesh();
     if (!mesh) continue;
     for (const prim of mesh.listPrimitives()) {
@@ -65,43 +78,61 @@ export async function loadPlayfieldGeometry(
     }
   }
 
-  const sceneW = sceneMaxX - sceneMinX;
-  const sceneD = sceneMaxZ - sceneMinZ;
-  const sx = opts.targetWidth / sceneW;
-  const sz = opts.targetDepth / sceneD;
-  const sy = (sx + sz) / 2;
-  const centerX = (sceneMinX + sceneMaxX) * 0.5 * sx;
-  const centerZ = (sceneMinZ + sceneMaxZ) * 0.5 * sz;
-  const baseOffsetY = -sceneMinY * sy;
+  // GLB X = width, GLB Y = depth (drain at small Y, far end at large Y), GLB Z = elevation.
+  const glbW = sceneMaxX - sceneMinX; // table width in GLB units
+  const glbD = sceneMaxY - sceneMinY; // table depth in GLB units (GLB Y axis)
+  const scaleX = opts.targetWidth / glbW;
+  const scaleZ = opts.targetDepth / glbD; // used for GLB Y → physics Z
+  const scaleY = (scaleX + scaleZ) / 2; // used for GLB Z → physics Y (height)
+
+  const centerX = (sceneMinX + sceneMaxX) * 0.5 * scaleX;
+  const centerZ = (sceneMinY + sceneMaxY) * 0.5 * scaleZ; // depth center from GLB Y range
+  const baseOffsetY = -sceneMinZ * scaleY; // align floor elevation to physics Y = 0
+
+  // Transform one GLB vertex to physics space.
+  const toPhysics = (
+    gx: number,
+    gy: number,
+    gz: number,
+  ): [number, number, number] => [
+    gx * scaleX - centerX,
+    gz * scaleY + baseOffsetY,
+    centerZ - gy * scaleZ, // GLB Y negated → drain end = +Z
+  ];
 
   const extractMesh = (
-    matchName: string,
+    matchNames: string | readonly string[],
     triangleFilter?: (
       a: [number, number, number],
       b: [number, number, number],
       c: [number, number, number],
     ) => boolean,
   ): MeshGeometry => {
+    const patterns = Array.isArray(matchNames) ? matchNames : [matchNames];
     const verts: number[] = [];
     const idx: number[] = [];
     let vertOffset = 0;
     for (const mesh of root.listMeshes()) {
       const name = mesh.getName() ?? '';
-      if (!name.includes(matchName)) continue;
+      if (!patterns.some((p) => name.includes(p))) continue;
       for (const prim of mesh.listPrimitives()) {
         const pos = prim.getAttribute('POSITION');
         if (!pos) continue;
         const arr = pos.getArray();
         if (!arr) continue;
         const count = pos.getCount();
-        // Transform vertices.
+
         const tVerts: [number, number, number][] = [];
         for (let i = 0; i < count; i++) {
-          const x = (arr[i * 3] as number) * sx - centerX;
-          const y = (arr[i * 3 + 1] as number) * sy + baseOffsetY;
-          const z = (arr[i * 3 + 2] as number) * sz - centerZ;
-          tVerts.push([x, y, z]);
+          tVerts.push(
+            toPhysics(
+              arr[i * 3] as number,
+              arr[i * 3 + 1] as number,
+              arr[i * 3 + 2] as number,
+            ),
+          );
         }
+
         const indices = prim.getIndices();
         const ia = indices?.getArray();
         const triCount = ia ? ia.length / 3 : count / 3;
@@ -120,7 +151,6 @@ export async function loadPlayfieldGeometry(
           kept.add(i1);
           kept.add(i2);
         }
-        // Remap kept vertex indices to new compact range.
         const remap = new Map<number, number>();
         for (const oldIdx of kept) {
           const newIdx = vertOffset + remap.size;
@@ -133,7 +163,7 @@ export async function loadPlayfieldGeometry(
       }
     }
     if (verts.length === 0) {
-      throw new Error(`Mesh '${matchName}' not found in GLB`);
+      throw new Error(`Mesh '${patterns.join(', ')}' not found in GLB`);
     }
     return {
       vertices: new Float32Array(verts),
@@ -160,8 +190,7 @@ export async function loadPlayfieldGeometry(
     return [nx / nl, ny / nl, nz / nl];
   }
 
-  // Sol: only keep upward-facing triangles (the top surface).
-  // Drops bottom/side faces of the floor mesh that would act as phantom walls.
+  // Sol: keep only upward-facing triangles (physics Y-up normal > 0.7).
   const keepSolTri = (
     a: [number, number, number],
     b: [number, number, number],
@@ -172,9 +201,7 @@ export async function loadPlayfieldGeometry(
     return n[1] > 0.7;
   };
 
-  // Murs: keep only vertical-ish faces (actual walls).
-  // Drops any top/bottom horizontal triangles inside the wall mesh.
-  // Also drops the plunger-pocket front wall so the ball can launch.
+  // Murs: keep only vertical-ish faces (|physics Y normal| < 0.5).
   const keepMursTri = (
     a: [number, number, number],
     b: [number, number, number],
@@ -182,20 +209,44 @@ export async function loadPlayfieldGeometry(
   ): boolean => {
     const n = normal(a, b, c);
     if (!n) return false;
-    if (Math.abs(n[1]) > 0.5) return false; // horizontal face, not a wall
-
-    const cxT = (a[0] + b[0] + c[0]) / 3;
-    const cyT = (a[1] + b[1] + c[1]) / 3;
-    const czT = (a[2] + b[2] + c[2]) / 3;
-    // Plunger pocket front: drop z-facing walls above floor in launch lane.
-    if (cxT > 3.5 && czT > 7.45 && czT < 7.75 && Math.abs(n[2]) > 0.7 && cyT > 0.4) {
-      return false;
-    }
-    return true;
+    return Math.abs(n[1]) <= 0.5;
   };
 
+  // Wall meshes — vertical faces forming physical collision surfaces.
+  // Patterns are matched as substrings against mesh names in the GLB.
+  const WALL_MESHES = [
+    'col_wall_frame',      // col_wall_frame_black (outer frame + main walls)
+    'col_wall_shooter',
+    'col_wall_panel',
+    'col_wall_slingshots',
+    'col_bumper_mini',
+    'col_wall_plunger_lane',
+    'col_ref_deco',        // matches all col_ref_deco_001…082
+    'col_bumper_targets',  // matches col_bumper_targets + col_bumper_targets_tiny
+    'col_ref_plunger_star',
+  ] as const;
+
+  // Ramp: extract all triangles (sloped + vertical sides) so the ball follows the channel.
+  let rampe: MeshGeometry | null = null;
+  try {
+    rampe = extractMesh('col_ramp_main');
+  } catch {
+    // No ramp mesh in this GLB — not an error.
+  }
+
+  // Floor meshes — automatically collect every col_floor_* mesh except col_floor_base.
+  // Adding col_floor_* in Blender is enough; no code change needed.
+  const floorMeshNames = root
+    .listMeshes()
+    .map((m) => m.getName() ?? '')
+    .filter((n) => n.startsWith('col_floor_') && !n.includes('base'));
+  if (floorMeshNames.length === 0) {
+    throw new Error('No col_floor_* meshes found in GLB');
+  }
+
   return {
-    sol: extractMesh('Sol', keepSolTri),
-    murs: extractMesh('Murs', keepMursTri),
+    sol: extractMesh(floorMeshNames, keepSolTri),
+    murs: extractMesh(WALL_MESHES, keepMursTri),
+    rampe,
   };
 }
