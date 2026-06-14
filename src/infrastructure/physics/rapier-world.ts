@@ -94,7 +94,13 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     for (const b of PLAYFIELD.bumpers) this.buildBumper(b);
   }
 
-  private buildBumper(b: { id: string; x: number; z: number; radius: number; scale: number }): void {
+  private buildBumper(b: {
+    id: string;
+    x: number;
+    z: number;
+    radius: number;
+    scale: number;
+  }): void {
     const radius = b.radius * b.scale;
     const halfHeight = PLAYFIELD.wall.height / 2;
     const body = this.world.createRigidBody(
