@@ -3,12 +3,19 @@ export const PLAYFIELD = {
   depth: 16,
   floorThickness: 0.3,
 
-  wall: {
-    height: 1,
-    thickness: 0.3,
+  // Inner playable area — where the GLB walls actually start (Sol_Mesh edge).
+  // Measured from `BaseFlipper.glb` after front scaling to width/depth.
+  interior: {
+    halfWidth: 4.33,
+    halfDepth: 7.8,
   },
 
-  cornerRadius: 2,
+  wall: {
+    height: 1.4,
+    thickness: 0.17,
+  },
+
+  cornerRadius: 1.5,
 
   launchLane: {
     separatorX: 3.7,
@@ -18,7 +25,7 @@ export const PLAYFIELD = {
 
   flippers: {
     left: { x: -2.5, y: 0.4, z: 5.5 },
-    right: { x: 2.5, y: 0.4, z: 5.5 },
+    right: { x: 2.3, y: 0.4, z: 5.5 },
     length: 2.1,
     restAngle: 0.3,
     activeAngle: -0.5,
@@ -26,7 +33,8 @@ export const PLAYFIELD = {
 
   ball: {
     radius: 0.2,
-    spawn: { x: 4.1, y: 0.2, z: 7.65 },
+    // y must sit above Sol surface (Sol top ≈ 0.311 in TABLE coords).
+    spawn: { x: 4.1, y: 0.55, z: 7.65 },
   },
 
   bumpers: [
