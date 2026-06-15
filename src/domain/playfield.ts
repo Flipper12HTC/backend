@@ -10,25 +10,25 @@ export const PLAYFIELD = {
   },
 
   wall: {
-    height: 5.3,
+    height: 7.0,
     thickness: 0.17,
   },
 
   cornerRadius: 1.5,
 
   // Right-side launch lane (plunger). Ball enters main field from top-right.
+  // Lane is between separatorX and right wall (X=+4.5).
   launchLane: {
     separatorX: 3.5,
     zMin: -8,
     zMax: 8,
   },
 
-  // Pivot positions extracted from pinball_map_v4.glb (GLB Z-up coordinate remapping).
-  // Left  pivot = left  wall attachment; collider extends RIGHT (toward centre).
-  // Right pivot = right wall attachment; collider extends LEFT  (toward centre).
+  // Pivot positions extracted from pinball_map_v5.glb (physics space after toPhysics()).
+  // Auto-overridden at init from the GLB via DerivedPositions; kept here as fallback only.
   flippers: {
-    left: { x: -1.74, y: 0.40, z: 6.574 },
-    right: { x: 1.53, y: 0.51, z: 6.609 },
+    left: { x: -1.526, y: 0.35, z: 6.635 },
+    right: { x: 1.525, y: 0.35, z: 6.635 },
     length: 3.27,
     restAngle: 0.3,
     activeAngle: -0.5,
@@ -36,7 +36,9 @@ export const PLAYFIELD = {
 
   ball: {
     radius: 0.2,
-    spawn: { x: 4.0, y: 0.5, z: 5.0 },
+    // X is auto-overridden from the col_wall_plunger_lane centre at runtime.
+    // Y=0.5 sits the ball just above the playfield floor (well under the ceiling at Y=1).
+    spawn: { x: 4.0, y: 0.5, z: 6.0 },
   },
 
   // Positions extracted from bumper_group_mesh (4 large) + bumper_mini_mesh (2 small).
@@ -58,8 +60,8 @@ export const PLAYFIELD = {
   },
 
   // Impulse applied when the ball is put into play (game start + respawn after drain).
-  // Sends the ball toward the upper bumper cluster.
+  // Sends the ball straight up the lane; the nudge at z≈-7.5 redirects it into the main field.
   serve: {
-    impulse: { x: -1.5, y: 0, z: -5 },
+    impulse: { x: 0, y: 0, z: -10 },
   },
 } as const;

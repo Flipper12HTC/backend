@@ -6,7 +6,7 @@ import type { PhysicsWorld, BallConfig, BumperHit } from '../../application/port
 import type { Vec3 } from '../../domain/ball.js';
 import type { FlipperSide } from '../../domain/flipper.js';
 import { PLAYFIELD } from '../../domain/playfield.js';
-import { loadPlayfieldGeometry } from './glb-loader.js';
+import { loadPlayfieldGeometry, type BumperPosition } from './glb-loader.js';
 
 type RapierModule = typeof RapierLib;
 
@@ -17,7 +17,7 @@ interface InitConfig extends Partial<BallConfig> {
 
 const DEFAULT_GLB_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  '../../../assets/models/pinball_map_v5.glb',
+  '../../../assets/models/bbbbbase.glb',
 );
 
 interface FlipperBody {
@@ -54,6 +54,11 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   private flipperHits = 0;
   private bumpers = new Map<number, BumperHit>();
   private bumperHits: BumperHit[] = [];
+  private _laneSeparatorX: number = PLAYFIELD.launchLane.separatorX;
+  private _spawnX: number = PLAYFIELD.ball.spawn.x;
+  private _spawnZ: number = PLAYFIELD.ball.spawn.z;
+  private _flipperPivots: { left: { x: number; y: number; z: number; length: number }; right: { x: number; y: number; z: number; length: number } } | null = null;
+  private _derivedBumpers: BumperPosition[] = [];
 
   async init(config: InitConfig = {}): Promise<void> {
     this.r = _require('@dimforge/rapier3d-compat') as RapierModule;
@@ -67,7 +72,7 @@ export class RapierPhysicsWorld implements PhysicsWorld {
       ...config,
     };
 
-    this.world = new this.r.World({ x: 0.0, y: -9.81, z: 1.1 });
+    this.world = new this.r.World({ x: 0.0, y: -9.81, z: 1.1 }); // gravity toward +Z (drain at Z≈-2, far end at Z=-8)
     this.eventQueue = new this.r.EventQueue(true);
 
     this.ballBody = this.world.createRigidBody(
@@ -89,13 +94,22 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     this.ballColliderHandle = ballCollider.handle;
 
     await this.buildPlayfieldFromGlb(config.playfieldGlbPath ?? DEFAULT_GLB_PATH);
+    // Force a safe spawn location: X=4.3 well into the right plunger lane (between
+    // the lane separator at X=3.5 and the right outer wall at X=4.5), Y=0.6 just
+    // above the floor, Z=6 near the drain end of the corridor.
+    this.ballBody.setTranslation({ x: 4.0, y: 0.6, z: 6.0 }, true);
+    this.ballBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
+    this.ballBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.leftFlipper = this.buildFlipper('left');
     this.rightFlipper = this.buildFlipper('right');
-    for (const b of PLAYFIELD.bumpers) this.buildBumper(b);
+    // Bumpers derived from `col_bumper_marker_*` meshes in the GLB.
+    // Fall back to PLAYFIELD.bumpers if the GLB lacks markers — preserves boot on legacy assets.
+    const bumpers = this._derivedBumpers.length > 0 ? this._derivedBumpers : PLAYFIELD.bumpers;
+    for (const b of bumpers) this.buildBumper(b);
   }
 
-  private buildBumper(b: { id: string; x: number; z: number; radius: number; scale: number }): void {
-    const radius = b.radius * b.scale;
+  private buildBumper(b: { id: string; x: number; z: number; radius: number; scale?: number }): void {
+    const radius = b.radius * (b.scale ?? 1);
     const halfHeight = PLAYFIELD.wall.height / 2;
     const body = this.world.createRigidBody(
       this.r.RigidBodyDesc.fixed().setTranslation(b.x, halfHeight, b.z),
@@ -115,6 +129,18 @@ export class RapierPhysicsWorld implements PhysicsWorld {
       targetWidth: PLAYFIELD.width,
       targetDepth: PLAYFIELD.depth,
     });
+    // Store GLB-derived positions — the col_wall_plunger_lane mesh is the single source of
+    // truth for both the lane separator (inner edge) and the ball spawn (lane centre).
+    // PLAYFIELD.ball.spawn.x acts only as a safety default if the GLB lacks the lane mesh.
+    this._laneSeparatorX = geom.derived.laneSeparatorX;
+    this._spawnX = geom.derived.laneSpawnX;
+    // _spawnZ is intentionally NOT overridden from the GLB — kept hardcoded so the ball
+    // always spawns at the drain end of the lane, regardless of the lane mesh extent.
+    this._flipperPivots = {
+      left: geom.derived.flipperLeft,
+      right: geom.derived.flipperRight,
+    };
+    this._derivedBumpers = geom.derived.bumpers;
 
     // Sol = GLB floor trimesh (inclined surface, exact map geometry).
     this.addTrimesh(geom.sol.vertices, geom.sol.indices, { friction: 0.1, restitution: 0.2 });
@@ -139,34 +165,50 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   }
 
   private addLaneSeparator(): void {
-    const sep = PLAYFIELD.launchLane.separatorX;   // 3.5
-    const halfH = PLAYFIELD.wall.height / 2;
-    const halfD = PLAYFIELD.depth / 2;             // 8.0
-    // Opening at the top: last 1.5 units (Z < -6.5) left open for ball entry.
-    const openingZ = -6.5;
-    const wallCenterZ = (openingZ + halfD) / 2;    // center between -6.5 and +8 = 0.75
-    const wallHalfD = halfD - wallCenterZ;          // half-length = 8.0 - 0.75 = 7.25
-    this.addBoxWall(sep, halfH, wallCenterZ, 0.05, halfH, wallHalfD);
+    const halfD = PLAYFIELD.depth / 2;
+    const sep = this._laneSeparatorX;
+    // Single thin wall on the inner edge of the plunger lane. Spans the lower 2/3
+    // of the table — the upper third is open so the ball can swing into the playfield
+    // once the plunger has pushed it up the corridor.
+    // Height matches the ball envelope, NOT the full ceiling — a tall wall here would
+    // form a vertical ceiling along the lane and trap the ball when it bounces inside
+    // the corridor at Y > 1.
+    const wallCenterZ = halfD - 5.5;        // covers roughly Z = -2 to +8 (drain side)
+    const wallHalfZ   = 5.0;
+    const wallCenterY = 0.4;                // mid-height of the ball envelope
+    const wallHalfY   = 0.4;                // spans Y = 0 → 0.8 (just covers the ball)
+    this.addBoxWall(sep, wallCenterY, wallCenterZ, 0.05, wallHalfY, wallHalfZ);
   }
 
   private buildBoundaryWalls(): void {
-    const halfW = PLAYFIELD.width / 2;         // 4.5
-    const halfD = PLAYFIELD.depth / 2;         // 8.0
-    const halfH = PLAYFIELD.wall.height / 2;   // 2.65
+    const halfW = PLAYFIELD.width / 2;
+    const halfD = PLAYFIELD.depth / 2;
+    const halfH = PLAYFIELD.wall.height / 2;
     const t = 0.15;
-    const sep = PLAYFIELD.launchLane.separatorX; // 3.5
+    const sep = this._laneSeparatorX; // derived from GLB at init
 
-    // Far end (Z=-8).
+    // Far end wall (Z=-8, top of table in bbbbbase.glb).
     this.addBoxWall(0, halfH, -halfD, halfW + t, halfH, t);
     // Left outer wall.
     this.addBoxWall(-halfW, halfH, 0, t, halfH, halfD + t);
     // Right outer wall.
     this.addBoxWall(halfW, halfH, 0, t, halfH, halfD + t);
-    // Bottom wall of launch lane only (Z=+8, X=sep→halfW).
-    // Keeps the ball in the lane at spawn; centre stays open for normal drain.
-    const laneHalfX = (halfW - sep) / 2;
-    const laneCenterX = sep + laneHalfX;
+    // Bottom wall for the GLB-derived lane (left side).
+    const wallX = sep > 0 ? halfW : -halfW;
+    const laneHalfX = Math.abs(wallX - sep) / 2;
+    const laneCenterX = (sep + wallX) / 2;
     this.addBoxWall(laneCenterX, halfH, halfD, laneHalfX, halfH, t);
+    // Bottom wall for the right lane (spawn side, X=separatorX→halfW).
+    const rightSep = PLAYFIELD.launchLane.separatorX; // 3.5
+    const rightLaneHalfX = (halfW - rightSep) / 2;   // (4.5-3.5)/2 = 0.5
+    const rightLaneCenterX = rightSep + rightLaneHalfX; // 4.0
+    this.addBoxWall(rightLaneCenterX, halfH, halfD, rightLaneHalfX, halfH, t);
+
+    // Invisible ceiling (glass top) at Y=2 — enough headroom for flippers/bumpers
+    // (which reach up to ~0.6) and the ball (radius 0.2) without crushing them, but
+    // low enough to block any wild vertical kick.
+    const ceilingY = 2.0;
+    this.addBoxWall(0, ceilingY + t, 0, halfW + t, t, halfD + t);
   }
 
   private addInclinedFloor(solVertices: Float32Array): void {
@@ -235,12 +277,14 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   }
 
   private buildFlipper(side: FlipperSide): FlipperBody {
-    const pivot = side === 'left' ? PLAYFIELD.flippers.left : PLAYFIELD.flippers.right;
+    const derived = this._flipperPivots?.[side];
+    const fallback = side === 'left' ? PLAYFIELD.flippers.left : PLAYFIELD.flippers.right;
+    const pivot = derived ?? fallback;
     const sign = side === 'left' ? -1 : 1;
     const restAngle = sign * PLAYFIELD.flippers.restAngle;
     const activeAngle = sign * PLAYFIELD.flippers.activeAngle;
     const dir = side === 'left' ? 1 : -1;
-    const halfLength = PLAYFIELD.flippers.length / 2;
+    const halfLength = (derived?.length ?? PLAYFIELD.flippers.length) / 2;
 
     const body = this.world.createRigidBody(
       this.r.RigidBodyDesc.kinematicPositionBased()
@@ -276,21 +320,26 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   step(dt: number): void {
     this.tickFlipper(this.leftFlipper, dt);
     this.tickFlipper(this.rightFlipper, dt);
-    this.world.timestep = dt;
-    this.world.step(this.eventQueue);
-
-    this.eventQueue.drainCollisionEvents((h1, h2, started) => {
-      if (!started) return;
-      const ball = this.ballColliderHandle;
-      const other = h1 === ball ? h2 : h2 === ball ? h1 : -1;
-      if (other === -1) return;
-      if (this.isFlipperHandle(other)) {
-        this.flipperHits += 1;
-        return;
-      }
-      const bumper = this.bumpers.get(other);
-      if (bumper) this.bumperHits.push(bumper);
-    });
+    // 4 substeps per tick — reduces tunneling through thin trimesh walls at high speed.
+    // Drain inside the loop so a brief contact (start + end within the same tick) still
+    // registers — draining only at the end would silently swallow such collision events.
+    const subDt = dt / 4;
+    this.world.timestep = subDt;
+    for (let i = 0; i < 4; i++) {
+      this.world.step(this.eventQueue);
+      this.eventQueue.drainCollisionEvents((h1, h2, started) => {
+        if (!started) return;
+        const ball = this.ballColliderHandle;
+        const other = h1 === ball ? h2 : h2 === ball ? h1 : -1;
+        if (other === -1) return;
+        if (this.isFlipperHandle(other)) {
+          this.flipperHits += 1;
+          return;
+        }
+        const bumper = this.bumpers.get(other);
+        if (bumper) this.bumperHits.push(bumper);
+      });
+    }
   }
 
   private isFlipperHandle(handle: number): boolean {
@@ -318,9 +367,14 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   }
 
   resetBall(): void {
-    this.ballBody.setTranslation(PLAYFIELD.ball.spawn, true);
+    // Same inline spawn position as init() — right plunger lane, just above the floor.
+    this.ballBody.setTranslation({ x: 4.0, y: 0.6, z: 6.0 }, true);
     this.ballBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.ballBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
+  }
+
+  getLaneSeparatorX(): number {
+    return this._laneSeparatorX;
   }
 
   /** Test helper: place the ball at an arbitrary position with zero velocity. */

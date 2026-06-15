@@ -2,7 +2,6 @@ import type { PhysicsWorld } from '../ports/physics-world.js';
 import type { GamePublisher } from '../ports/game-publisher.js';
 import type { GameState } from '../../domain/game.js';
 import { INITIAL_BALLS, INITIAL_MULTIPLIER } from '../../domain/game.js';
-import { PLAYFIELD } from '../../domain/playfield.js';
 
 export function startGame(state: GameState, physics: PhysicsWorld, publisher: GamePublisher): void {
   state.status = 'running';

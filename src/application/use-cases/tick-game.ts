@@ -3,8 +3,8 @@ import type { GamePublisher } from '../ports/game-publisher.js';
 import type { GameState } from '../../domain/game.js';
 import { PLAYFIELD } from '../../domain/playfield.js';
 
-// TEMP test mode: drain when the ball is about to touch the bottom wall
-const DRAIN_Z = PLAYFIELD.depth / 2 - 0.5;
+// Ball drains when it passes the flipper line (drain end of table, +Z in physics).
+const DRAIN_Z = PLAYFIELD.flippers.left.z;
 const FLIPPER_HIT_POINTS = 50;
 const BUMPER_HIT_POINTS = 100;
 
@@ -44,17 +44,19 @@ export function tickGame(
     scoreChanged = true;
   }
   if (scoreChanged) publishScoreUpdate(state, publisher);
+  const sep = physics.getLaneSeparatorX();
   if (!state.ballInLane) {
-    const nearMouthX = pos.x > PLAYFIELD.launchLane.separatorX - 0.6;
-    const nearMouthZ = pos.z < PLAYFIELD.launchLane.zMin + 0.5;
+    // Nudge ball toward main field when near far end of lane (Z≈-7 to -8).
+    const nearMouthX = sep > 0 ? pos.x > sep - 0.6 : pos.x < sep + 0.6;
+    const nearMouthZ = pos.z < PLAYFIELD.launchLane.zMin + 0.5; // near far end (Z=-8)
     if (nearMouthX && nearMouthZ) {
-      physics.applyBallImpulse({ x: -3, y: 0, z: 0.5 });
+      physics.applyBallImpulse({ x: sep > 0 ? -3 : 3, y: 0, z: 0.5 });
     }
   }
 
-  // Drain only outside the launch lane: a ball still in the lane (resting against
-  // the bottom wall before the player pulls the plunger) must not be counted as drained.
-  const outsideLane = pos.x < PLAYFIELD.launchLane.separatorX;
+  // Ball is outside the lane when it has crossed the separator toward the main field.
+  const outsideLane = sep > 0 ? pos.x < sep : pos.x > sep;
+  // Drain: ball passed flippers (Z≈-1.9) going toward +Z.
   const drained = pos.y < PLAYFIELD.drain.yThreshold || (pos.z > DRAIN_Z && outsideLane);
   if (!drained) return;
 

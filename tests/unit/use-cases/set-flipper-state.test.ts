@@ -20,6 +20,7 @@ const mockPhysics: PhysicsWorld = {
   },
   consumeFlipperHits: () => 0,
   consumeBumperHits: () => [],
+  getLaneSeparatorX: () => 3.5,
 };
 
 const mockPublisher: GamePublisher = {
