@@ -17,7 +17,7 @@ interface InitConfig extends Partial<BallConfig> {
 
 const DEFAULT_GLB_PATH = resolve(
   dirname(fileURLToPath(import.meta.url)),
-  '../../../assets/models/bbbbbase.glb',
+  '../../../assets/models/FlipperBase.glb',
 );
 
 interface FlipperBody {
@@ -150,6 +150,11 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     this.addInclinedFloor(geom.sol.vertices);
     // Murs = walls from GLB (bouncy, low friction so the ball glances off).
     this.addTrimesh(geom.murs.vertices, geom.murs.indices, { friction: 0.05, restitution: 0.6 });
+    // Aprons = inlane/outlane guide walls, bottom edge dropped to the floor by the loader
+    // so the ball can't roll under them (apron_2 floated 0.31 above the floor).
+    if (geom.aprons && geom.aprons.vertices.length > 0) {
+      this.addTrimesh(geom.aprons.vertices, geom.aprons.indices, { friction: 0.05, restitution: 0.6 });
+    }
     // Rampes = full ramp geometry (all face angles) so the ball rolls through the channel.
     if (geom.rampe && geom.rampe.vertices.length > 0) {
       this.addTrimesh(geom.rampe.vertices, geom.rampe.indices, { friction: 0.05, restitution: 0.4 });

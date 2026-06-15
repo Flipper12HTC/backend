@@ -30,6 +30,7 @@ export interface DerivedPositions {
 export interface PlayfieldGeometry {
   sol: MeshGeometry;
   murs: MeshGeometry;
+  aprons: MeshGeometry | null;
   rampe: MeshGeometry | null;
   derived: DerivedPositions;
 }
@@ -101,16 +102,18 @@ export async function loadPlayfieldGeometry(
     }
   }
 
-  // GLB X = width, GLB Y = depth (drain at small Y, far end at large Y), GLB Z = elevation.
-  const glbW = sceneMaxX - sceneMinX; // table width in GLB units
-  const glbD = sceneMaxY - sceneMinY; // table depth in GLB units (GLB Y axis)
+  // GLB is Y-up (standard glTF, "+Y Up" on export): GLB X = width, GLB Y = elevation,
+  // GLB Z = depth. The frontend (Three.js, Y-up) renders this natively; the physics
+  // space is Y-up too (width=X, height=Y, depth=Z) so the remap is now near-identity.
+  const glbW = sceneMaxX - sceneMinX; // table width in GLB units (X)
+  const glbD = sceneMaxZ - sceneMinZ; // table depth in GLB units (Z axis)
   const scaleX = opts.targetWidth / glbW;
-  const scaleZ = opts.targetDepth / glbD; // used for GLB Y → physics Z
-  const scaleY = (scaleX + scaleZ) / 2; // used for GLB Z → physics Y (height)
+  const scaleZ = opts.targetDepth / glbD; // used for GLB Z → physics Z
+  const scaleY = (scaleX + scaleZ) / 2; // used for GLB Y → physics Y (height)
 
   const centerX = (sceneMinX + sceneMaxX) * 0.5 * scaleX;
-  const centerZ = (sceneMinY + sceneMaxY) * 0.5 * scaleZ; // depth center from GLB Y range
-  const baseOffsetY = -sceneMinZ * scaleY; // align floor elevation to physics Y = 0
+  const centerZ = (sceneMinZ + sceneMaxZ) * 0.5 * scaleZ; // depth center from GLB Z range
+  const baseOffsetY = -sceneMinY * scaleY; // align floor elevation (GLB Y) to physics Y = 0
 
   // Transform one GLB vertex to physics space.
   const toPhysics = (
@@ -119,8 +122,9 @@ export async function loadPlayfieldGeometry(
     gz: number,
   ): [number, number, number] => [
     gx * scaleX - centerX,
-    gz * scaleY + baseOffsetY,
-    centerZ - gy * scaleZ, // GLB Y negated → drain end = +Z
+    gy * scaleY + baseOffsetY, // GLB Y → physics Y (elevation)
+    gz * scaleZ - centerZ, // GLB Z → physics Z (depth). No mirror: keeps triangle
+    // winding (floor normals stay +Y) and puts the drain end at +Z.
   ];
 
   const extractMesh = (
@@ -130,6 +134,7 @@ export async function loadPlayfieldGeometry(
       b: [number, number, number],
       c: [number, number, number],
     ) => boolean,
+    vertexTransform?: (v: [number, number, number]) => [number, number, number],
   ): MeshGeometry => {
     const patterns = Array.isArray(matchNames) ? matchNames : [matchNames];
     const verts: number[] = [];
@@ -147,13 +152,12 @@ export async function loadPlayfieldGeometry(
 
         const tVerts: [number, number, number][] = [];
         for (let i = 0; i < count; i++) {
-          tVerts.push(
-            toPhysics(
-              arr[i * 3] as number,
-              arr[i * 3 + 1] as number,
-              arr[i * 3 + 2] as number,
-            ),
+          const p = toPhysics(
+            arr[i * 3] as number,
+            arr[i * 3 + 1] as number,
+            arr[i * 3 + 2] as number,
           );
+          tVerts.push(vertexTransform ? vertexTransform(p) : p);
         }
 
         const indices = prim.getIndices();
@@ -279,8 +283,17 @@ export async function loadPlayfieldGeometry(
     'col_bumper_targets',     // col_bumper_targets + col_bumper_targets_tiny + col_bumper_targets_group
     'col_ref_deco',           // col_ref_deco_*
     'col_ref_wall',           // col_ref_wall_*
-    'col_wall_apron',         // col_wall_apron_1/2/3 — vertical faces only (keepMursTri filter)
+    // col_wall_apron extracted separately (APRON_MESHES) — its bottom edge floats above
+    // the floor (apron_2 sits at Y=0.31), letting the ball roll UNDER it. The dedicated
+    // extraction drops the bottom band to the floor so the wall actually blocks the ball.
   ] as const;
+
+  // Apron walls: same vertical-face filter as the other walls, but the bottom edge is
+  // pulled down to the floor (Y = -0.1) so there is no gap for the ball to pass under.
+  // Threshold 0.5 is safely between the apron bottoms (0.12–0.31) and tops (1.5+).
+  const APRON_MESHES = ['col_wall_apron'] as const;
+  const dropApronBottom = (v: [number, number, number]): [number, number, number] =>
+    v[1] < 0.5 ? [v[0], -0.1, v[2]] : v;
 
   // Meshes extracted with ALL triangles (no normal filter) — ramps whose sloped
   // surfaces need to be walked through.
@@ -395,9 +408,17 @@ export async function loadPlayfieldGeometry(
     });
   }
 
+  let aprons: MeshGeometry | null = null;
+  try {
+    aprons = extractMesh(APRON_MESHES, keepMursTri, dropApronBottom);
+  } catch {
+    // No apron meshes in this GLB — not an error.
+  }
+
   return {
     sol: extractMesh(floorMeshNames, keepSolTri),
     murs: extractMesh(WALL_MESHES, keepMursTri),
+    aprons,
     rampe,
     derived: { flipperLeft, flipperRight, laneSeparatorX, laneSpawnX, bumpers },
   };

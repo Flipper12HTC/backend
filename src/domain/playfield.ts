@@ -24,12 +24,12 @@ export const PLAYFIELD = {
     zMax: 8,
   },
 
-  // Pivot positions extracted from pinball_map_v5.glb (physics space after toPhysics()).
+  // Pivot positions extracted from FlipperBase.glb (physics space after toPhysics()).
   // Auto-overridden at init from the GLB via DerivedPositions; kept here as fallback only.
   flippers: {
     left: { x: -1.526, y: 0.35, z: 6.635 },
     right: { x: 1.525, y: 0.35, z: 6.635 },
-    length: 3.27,
+    length: 1.144,
     restAngle: 0.3,
     activeAngle: -0.5,
   },
