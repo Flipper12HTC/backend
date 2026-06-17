@@ -29,9 +29,9 @@ interface FlipperBody {
   target: number;
 }
 
-const FLIPPER_HALF_HEIGHT = 0.25;
+const FLIPPER_HALF_HEIGHT = 0.28;
 const FLIPPER_HALF_THICKNESS = 0.2;
-const FLIPPER_BORDER_RADIUS = 0.04;
+const FLIPPER_BORDER_RADIUS = 0.06;
 const FLIPPER_ROTATION_SPEED = 18;
 const FLIPPER_RESTITUTION = 0.6;
 const FLIPPER_FRICTION = 0.4;
@@ -339,9 +339,16 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     const dir = side === 'left' ? 1 : -1;
     const halfLength = (derived?.length ?? PLAYFIELD.flippers.length) / 2;
 
+    // pivot.y from the GLB (bbFL.minY) is the floor level at the flipper Z position.
+    // Using it directly as the body CENTER would place half the arm below the floor and
+    // half above, making the ball (resting at floor+radius) sit inside the top face —
+    // causing permanent penetration and erratic contact. Instead we raise the center by
+    // TOTAL_HALF so the collider BOTTOM sits at floor level and the arm extends upward,
+    // letting the ball contact the arm's front face cleanly from the field side.
+    const totalHalf = FLIPPER_HALF_HEIGHT + FLIPPER_BORDER_RADIUS;
     const body = this.world.createRigidBody(
-      this.r.RigidBodyDesc.kinematicPositionBased()
-        .setTranslation(pivot.x, pivot.y, pivot.z)
+      this.r.RigidBodyDesc.kinematicVelocityBased()
+        .setTranslation(pivot.x, pivot.y + totalHalf, pivot.z)
         .setRotation(quatFromY(restAngle))
         .setCcdEnabled(true),
     );
@@ -402,11 +409,27 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   }
 
   private tickFlipper(f: FlipperBody, dt: number): void {
-    if (f.current === f.target) return;
     const delta = f.target - f.current;
-    const max = FLIPPER_ROTATION_SPEED * dt;
-    f.current += Math.abs(delta) <= max ? delta : Math.sign(delta) * max;
-    f.body.setNextKinematicRotation(quatFromY(f.current));
+    if (Math.abs(delta) < 0.001) {
+      // At rest — make sure angular velocity is zero so the flipper doesn't drift.
+      if (f.current !== f.target) {
+        f.current = f.target;
+        f.body.setRotation(quatFromY(f.target), true);
+      }
+      f.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+      return;
+    }
+    const step = Math.sign(delta) * Math.min(Math.abs(delta), FLIPPER_ROTATION_SPEED * dt);
+    f.current += step;
+    if (Math.abs(f.target - f.current) < 0.001) {
+      // Reached target this frame — snap to exact angle and stop.
+      f.current = f.target;
+      f.body.setRotation(quatFromY(f.target), true);
+      f.body.setAngvel({ x: 0, y: 0, z: 0 }, true);
+    } else {
+      // Still moving — set explicit angular velocity so Rapier uses it for impulse calculation.
+      f.body.setAngvel({ x: 0, y: Math.sign(delta) * FLIPPER_ROTATION_SPEED, z: 0 }, true);
+    }
   }
 
   getBallPosition(): Vec3 {

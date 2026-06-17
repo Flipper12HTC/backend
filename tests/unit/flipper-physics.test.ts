@@ -23,16 +23,17 @@ describe('flipper physics', () => {
 
   it('left flipper push sends the ball upward (z decreases) and registers a hit', () => {
     const flipper = PLAYFIELD.flippers.left;
-    // Place the ball just above the flipper tip, slightly inboard of the pivot.
-    // The left flipper extends in +X from its pivot at rest (angle ~ -0.3 rad about Y).
+    // Place the ball just in front of the arm (field side, z < arm) so it makes fresh
+    // contact when the arm sweeps through during activation — guaranteeing a "started"
+    // collision event rather than an already-ongoing contact.
     physics.setBallPosition({
       x: flipper.x + 1.0,
       y: flipper.y + 0.6,
-      z: flipper.z,
+      z: flipper.z - 0.4,
     });
 
-    // Let the ball settle on top of the resting flipper.
-    for (let i = 0; i < 20; i++) physics.step(DT);
+    // Minimal settle — just enough for Y to stabilise; keep ball in front of arm.
+    for (let i = 0; i < 5; i++) physics.step(DT);
     const beforePush = physics.getBallPosition();
     physics.consumeFlipperHits();
 
@@ -56,10 +57,10 @@ describe('flipper physics', () => {
     physics.setBallPosition({
       x: flipper.x - 1.0,
       y: flipper.y + 0.6,
-      z: flipper.z,
+      z: flipper.z - 0.4,
     });
 
-    for (let i = 0; i < 20; i++) physics.step(DT);
+    for (let i = 0; i < 5; i++) physics.step(DT);
     const beforePush = physics.getBallPosition();
 
     physics.setFlipperActive('right', true);
@@ -77,15 +78,17 @@ describe('flipper physics', () => {
     physics.setBallPosition({
       x: flipper.x + 1.0,
       y: flipper.y + 0.6,
-      z: flipper.z,
+      z: flipper.z - 0.4,
     });
-    for (let i = 0; i < 20; i++) physics.step(DT);
+    for (let i = 0; i < 5; i++) physics.step(DT);
 
     physics.setFlipperActive('left', true);
     for (let i = 0; i < 9; i++) physics.step(DT);
     physics.setFlipperActive('left', false);
-    // Plenty of time for the kinematic rotation to interpolate back to rest.
-    for (let i = 0; i < 30; i++) physics.step(DT);
+    // kinematicVelocityBased transfers a stronger impulse than position-based, so the ball
+    // may stay in the air longer. Wait 90 frames (1.5s) to ensure it has peaked and is
+    // descending before taking the settled snapshot.
+    for (let i = 0; i < 90; i++) physics.step(DT);
 
     // The ball is no longer being driven by the flipper: it should fall back
     // under gravity rather than keep being lifted.
