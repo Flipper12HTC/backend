@@ -37,8 +37,8 @@ export const PLAYFIELD = {
   ball: {
     radius: 0.2,
     // X is auto-overridden from the col_wall_plunger_lane centre at runtime.
-    // Y=0.5 sits the ball just above the playfield floor (well under the ceiling at Y=1).
-    spawn: { x: 4.0, y: 0.5, z: 6.0 },
+    // Y=1.0: floor top at Z=6 is Y≈0.635; ball radius=0.2 → resting center ≈ Y=0.835; 1.0 gives clearance.
+    spawn: { x: 4.0, y: 1.0, z: 6.0 },
   },
 
   // Positions extracted from bumper_group_mesh (4 large) + bumper_mini_mesh (2 small).
@@ -57,6 +57,10 @@ export const PLAYFIELD = {
   drain: {
     gap: 2.5,
     yThreshold: -1,
+    // Ball is considered drained when Z exceeds this threshold in the main field.
+    // Set well past the flipper pivot (Z≈6.635) so the ball must reach the back wall
+    // before drain triggers — avoids resetting while the ball is still near the flippers.
+    zThreshold: 7.5,
   },
 
   // Impulse applied when the ball is put into play (game start + respawn after drain).

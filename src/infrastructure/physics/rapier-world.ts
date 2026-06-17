@@ -94,18 +94,16 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     this.ballColliderHandle = ballCollider.handle;
 
     await this.buildPlayfieldFromGlb(config.playfieldGlbPath ?? DEFAULT_GLB_PATH);
-    // Force a safe spawn location: X=4.3 well into the right plunger lane (between
-    // the lane separator at X=3.5 and the right outer wall at X=4.5), Y=0.6 just
-    // above the floor, Z=6 near the drain end of the corridor.
-    this.ballBody.setTranslation({ x: 4.0, y: 0.6, z: 6.0 }, true);
+    // Force a safe spawn location: X=4.0 well into the right plunger lane (between
+    // the lane separator at X=3.5 and the right outer wall at X=4.5), Y=1.0 above
+    // the floor (floor top at Z=6 is Y≈0.635; resting center ≈ Y=0.835), Z=6 drain end.
+    this.ballBody.setTranslation({ x: 4.0, y: 1.0, z: 6.0 }, true);
     this.ballBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.ballBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.leftFlipper = this.buildFlipper('left');
     this.rightFlipper = this.buildFlipper('right');
-    // Bumpers derived from `col_bumper_marker_*` meshes in the GLB.
-    // Fall back to PLAYFIELD.bumpers if the GLB lacks markers — preserves boot on legacy assets.
-    const bumpers = this._derivedBumpers.length > 0 ? this._derivedBumpers : PLAYFIELD.bumpers;
-    for (const b of bumpers) this.buildBumper(b);
+    // Bumpers disabled — GLB does not contain bumper geometry yet.
+    // Re-enable by uncommenting when col_bumper_marker_* meshes are added to the GLB.
   }
 
   private buildBumper(b: { id: string; x: number; z: number; radius: number; scale?: number }): void {
@@ -142,12 +140,17 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     };
     this._derivedBumpers = geom.derived.bumpers;
 
-    // Sol = GLB floor trimesh (inclined surface, exact map geometry).
+    // Sol = base floor trimesh (col_floor_* meshes, stable slope).
     this.addTrimesh(geom.sol.vertices, geom.sol.indices, { friction: 0.1, restitution: 0.2 });
-    // Inclined safety floor: thick box that follows the table's actual tilt computed from the
-    // extracted floor vertices. Catches balls that tunnel through the thin trimesh and places
-    // them at the correct visual height instead of the old flat Y=0 backup.
+    // Inclined safety floor: thick box whose tilt is computed from the base floor vertices only.
+    // Using only col_floor_* (not col_ref_floor_*) keeps the slope stable so the ball spawn
+    // position (Y=0.6) stays above the box surface at Z=6.
     this.addInclinedFloor(geom.sol.vertices);
+    // Reference floor trimesh (col_ref_floor_*): exact visual floor surface for accurate
+    // collision. Added separately so it doesn't affect the inclined box slope.
+    if (geom.refFloor && geom.refFloor.vertices.length > 0) {
+      this.addTrimesh(geom.refFloor.vertices, geom.refFloor.indices, { friction: 0.1, restitution: 0.2 });
+    }
     // Murs = walls from GLB (bouncy, low friction so the ball glances off).
     this.addTrimesh(geom.murs.vertices, geom.murs.indices, { friction: 0.05, restitution: 0.6 });
     // Aprons = inlane/outlane guide walls, bottom edge dropped to the floor by the loader
@@ -159,6 +162,15 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     if (geom.rampe && geom.rampe.vertices.length > 0) {
       this.addTrimesh(geom.rampe.vertices, geom.rampe.indices, { friction: 0.05, restitution: 0.4 });
     }
+    // Frame walls (col_wall_frame_*) — extracted without the inLane filter so their
+    // triangles inside the lane zone are preserved (col_wall_frame_black is at X≈3–4.5).
+    if (geom.frameWalls && geom.frameWalls.vertices.length > 0) {
+      this.addTrimesh(geom.frameWalls.vertices, geom.frameWalls.indices, { friction: 0.05, restitution: 0.6 });
+    }
+    // Backup box colliders for the apron inlane/outlane guides.
+    // The apron trimesh (col_wall_apron_*) can miss fast-moving balls — these boxes
+    // duplicate the key boundary surfaces so there is always a solid fallback.
+    this.addApronBoxes();
     // Solid box boundaries: the GLB outer wall has only 2 triangles on the far end and 6 per
     // side wall — too sparse to reliably stop a fast ball. Box colliders are the safety net.
     this.buildBoundaryWalls();
@@ -169,20 +181,38 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     this.addLaneSeparator();
   }
 
+  private addApronBoxes(): void {
+    // Backup solid boxes for the apron guide surfaces and outer-wall inner face.
+    // All positions derived from FlipperBase.glb inspection (physics space).
+    const halfH  = PLAYFIELD.wall.height / 2;
+    const zFront = 3.35;
+    const zBack  = 7.05;
+    const zCtr   = (zFront + zBack) / 2;   // ≈ 5.2
+    const zHalf  = (zBack - zFront) / 2;   // ≈ 1.85
+
+    // Left outlane separator (inner edge of left outlane channel, X ≈ -3.65).
+    this.addBoxWall(-3.65, halfH, zCtr, 0.08, halfH, zHalf);
+
+    // Right inlane separator — spans from the apron mesh right edge (X ≈ 2.94) flush to
+    // the lane-separator box inner face (this._laneSeparatorX).  No gap means the ball
+    // cannot slip between the apron guide and the plunger-lane wall.
+    const rightGuide = 2.94;
+    const sep        = this._laneSeparatorX; // 3.5 (or GLB-derived)
+    const rHalf      = (sep - rightGuide) / 2;
+    const rCtr       = rightGuide + rHalf;
+    this.addBoxWall(rCtr, halfH, zCtr, rHalf, halfH, zHalf);
+  }
+
   private addLaneSeparator(): void {
     const halfD = PLAYFIELD.depth / 2;
     const sep = this._laneSeparatorX;
-    // Single thin wall on the inner edge of the plunger lane. Spans the lower 2/3
-    // of the table — the upper third is open so the ball can swing into the playfield
-    // once the plunger has pushed it up the corridor.
-    // Height matches the ball envelope, NOT the full ceiling — a tall wall here would
-    // form a vertical ceiling along the lane and trap the ball when it bounces inside
-    // the corridor at Y > 1.
-    const wallCenterZ = halfD - 5.5;        // covers roughly Z = -2 to +8 (drain side)
+    // Separator spans the full wall height so it stays above the rising inclined floor
+    // (which reaches Y≈4.2 at the far end). The opening is at Z < −2.5 (no separator
+    // there) so the ball can still exit into the main field at the correct position.
+    const wallCenterZ = halfD - 5.5;        // center at Z=2.5, spans Z=-2.5 → +7.5
     const wallHalfZ   = 5.0;
-    const wallCenterY = 0.4;                // mid-height of the ball envelope
-    const wallHalfY   = 0.4;                // spans Y = 0 → 0.8 (just covers the ball)
-    this.addBoxWall(sep, wallCenterY, wallCenterZ, 0.05, wallHalfY, wallHalfZ);
+    const wallHalfY   = PLAYFIELD.wall.height / 2; // = 3.5, spans Y=0 → 7.0 (full wall height)
+    this.addBoxWall(sep, wallHalfY, wallCenterZ, 0.05, wallHalfY, wallHalfZ);
   }
 
   private buildBoundaryWalls(): void {
@@ -192,12 +222,19 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     const t = 0.15;
     const sep = this._laneSeparatorX; // derived from GLB at init
 
-    // Far end wall (Z=-8, top of table in bbbbbase.glb).
-    this.addBoxWall(0, halfH, -halfD, halfW + t, halfH, t);
-    // Left outer wall.
-    this.addBoxWall(-halfW, halfH, 0, t, halfH, halfD + t);
-    // Right outer wall.
-    this.addBoxWall(halfW, halfH, 0, t, halfH, halfD + t);
+    // Box walls sit just outside the GLB col_wall_main_outer inner faces.
+    // Left/right are flush; far end stays at -halfD so the nudge trigger at Z=-7.5 fires
+    // before the ball reaches the box inner face at Z=-7.85.
+    this.addBoxWall(-(4.50 + t), halfH, 0, t, halfH, halfD + t); // left, face at X=-4.50
+    this.addBoxWall( (4.16 + t), halfH, 0, t, halfH, halfD + t); // right, face at X=+4.16
+    this.addBoxWall(0, halfH, -halfD, halfW + t, halfH, t);       // far end, face at Z=-7.85
+    // Drain wall — main field (X: left outer wall → lane separator).
+    // Previously there was no wall at +Z for the main field, so the ball flew off into
+    // undefined space past Z=8. This wall gives the ball something to bounce off and
+    // triggers the drain detection when the ball reaches zThreshold (7.5) before it.
+    const mainHalfX = (sep + 4.50) / 2;          // half-width of main field
+    const mainCenterX = -4.50 + mainHalfX;        // center X of main field
+    this.addBoxWall(mainCenterX, halfH, halfD, mainHalfX, halfH, t);
     // Bottom wall for the GLB-derived lane (left side).
     const wallX = sep > 0 ? halfW : -halfW;
     const laneHalfX = Math.abs(wallX - sep) / 2;
@@ -209,11 +246,11 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     const rightLaneCenterX = rightSep + rightLaneHalfX; // 4.0
     this.addBoxWall(rightLaneCenterX, halfH, halfD, rightLaneHalfX, halfH, t);
 
-    // Invisible ceiling (glass top) at Y=2 — enough headroom for flippers/bumpers
-    // (which reach up to ~0.6) and the ball (radius 0.2) without crushing them, but
-    // low enough to block any wild vertical kick.
-    const ceilingY = 2.0;
-    this.addBoxWall(0, ceilingY + t, 0, halfW + t, t, halfD + t);
+    // Ceiling at wall height. The table is inclined — the floor rises from Y≈0 at the
+    // drain end to Y≈4.2 at the far end. A ceiling at Y=2 pinches the ball against the
+    // rising floor around Z≈2 (which appeared as "no hitbox" blockage). Must sit above
+    // the highest floor point + ball diameter, so we use the full wall height (7.0).
+    this.addBoxWall(0, halfH * 2 + t, 0, halfW + t, t, halfD + t);
   }
 
   private addInclinedFloor(solVertices: Float32Array): void {
@@ -272,9 +309,20 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     indices: Uint32Array,
     opts: { friction: number; restitution: number },
   ): void {
+    // Cleanup flags only — no FIX_INTERNAL_EDGES (requires a closed manifold mesh;
+    // our open surfaces would get wrong pseudo-normals at boundary edges, causing the
+    // ball to be deflected upward or through the surface).
+    // DELETE_BAD_TOPOLOGY: removes T-junctions that create invisible walls.
+    // MERGE_DUPLICATE_VERTICES: collapses vertices at X=LANE_X_MIN produced by the X-clip.
+    // DELETE_DEGENERATE + DUPLICATE: removes zero-area and overlapping triangles.
+    const flags =
+      this.r.TriMeshFlags.DELETE_BAD_TOPOLOGY_TRIANGLES | //   4
+      this.r.TriMeshFlags.MERGE_DUPLICATE_VERTICES |       //  16
+      this.r.TriMeshFlags.DELETE_DEGENERATE_TRIANGLES |    //  32
+      this.r.TriMeshFlags.DELETE_DUPLICATE_TRIANGLES;      //  64
     const body = this.world.createRigidBody(this.r.RigidBodyDesc.fixed());
     this.world.createCollider(
-      this.r.ColliderDesc.trimesh(vertices, indices)
+      this.r.ColliderDesc.trimesh(vertices, indices, flags)
         .setFriction(opts.friction)
         .setRestitution(opts.restitution),
       body,
@@ -373,7 +421,7 @@ export class RapierPhysicsWorld implements PhysicsWorld {
 
   resetBall(): void {
     // Same inline spawn position as init() — right plunger lane, just above the floor.
-    this.ballBody.setTranslation({ x: 4.0, y: 0.6, z: 6.0 }, true);
+    this.ballBody.setTranslation({ x: 4.0, y: 1.0, z: 6.0 }, true);
     this.ballBody.setLinvel({ x: 0, y: 0, z: 0 }, true);
     this.ballBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
   }

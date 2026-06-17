@@ -28,10 +28,12 @@ export interface DerivedPositions {
 }
 
 export interface PlayfieldGeometry {
-  sol: MeshGeometry;
+  sol: MeshGeometry;       // col_floor_* only — used for addInclinedFloor slope
+  refFloor: MeshGeometry | null; // col_ref_floor_* — separate trimesh for exact floor collision
   murs: MeshGeometry;
   aprons: MeshGeometry | null;
   rampe: MeshGeometry | null;
+  frameWalls: MeshGeometry | null; // col_wall_frame_* — extracted without the inLane filter
   derived: DerivedPositions;
 }
 
@@ -56,6 +58,25 @@ export interface LoadOptions {
  *   3. Center on physics X and Z.
  *   4. Align floor (glbZ min) to physics Y = 0.
  */
+/**
+ * Concatenate two trimeshes into one, with the second mesh's vertex indices
+ * shifted by the first mesh's vertex count. Returns null if both inputs are null.
+ */
+function mergeTrimeshes(a: MeshGeometry | null, b: MeshGeometry | null): MeshGeometry | null {
+  if (!a) return b;
+  if (!b) return a;
+  const verts = new Float32Array(a.vertices.length + b.vertices.length);
+  verts.set(a.vertices, 0);
+  verts.set(b.vertices, a.vertices.length);
+  const offset = a.vertices.length / 3;
+  const idx = new Uint32Array(a.indices.length + b.indices.length);
+  idx.set(a.indices, 0);
+  for (let i = 0; i < b.indices.length; i++) {
+    idx[a.indices.length + i] = (b.indices[i] as number) + offset;
+  }
+  return { vertices: verts, indices: idx };
+}
+
 export async function loadPlayfieldGeometry(
   path: string,
   opts: LoadOptions,
@@ -217,7 +238,9 @@ export async function loadPlayfieldGeometry(
     return [nx / nl, ny / nl, nz / nl];
   }
 
-  // Sol: keep only upward-facing triangles (physics Y-up normal > 0.7).
+  // Sol: keep any face that points "mostly up" (physics Y-up normal > 0.3).
+  // 0.3 ≈ slopes up to ~73° from horizontal — covers tilted playfield ramps and
+  // soft transitions that 0.7 dropped, which left holes the ball fell through.
   const keepSolTri = (
     a: [number, number, number],
     b: [number, number, number],
@@ -225,29 +248,35 @@ export async function loadPlayfieldGeometry(
   ): boolean => {
     const n = normal(a, b, c);
     if (!n) return false;
-    return n[1] > 0.7;
+    return n[1] > 0.3;
   };
 
-  // Plunger lane exclusion zone — any wall triangle whose centroid lies inside this
-  // box is dropped, so no GLB geometry can trap the ball in the corridor. The lane
-  // separator box wall + the right outer boundary box wall handle the corridor's
-  // collision cleanly on their own.
-  const LANE_X_MIN = 3.4;     // just past the lane separator
-  const LANE_X_MAX = 4.55;    // just past the right outer boundary
-  const LANE_Z_MIN = -8.2;
-  const LANE_Z_MAX = 8.2;
+  // Plunger lane exclusion zone — a triangle is dropped only when its CENTROID lies
+  // inside the X band AND all three vertices are strictly inside it. This keeps walls
+  // whose footprint just barely crosses the separator line (col_wall_main_outer's
+  // bottom edge, col_wall_apron's curve, etc.) instead of stripping them entirely.
+  // The vertex-based "ANY vertex inside" check was poking holes through every wall
+  // that touched the corridor boundary.
+  const LANE_X_MIN = 3.3;
+  const LANE_X_MAX = 4.55;
   const inLane = (
     a: [number, number, number],
     b: [number, number, number],
     c: [number, number, number],
   ): boolean => {
     const cx = (a[0] + b[0] + c[0]) / 3;
-    const cz = (a[2] + b[2] + c[2]) / 3;
-    return cx > LANE_X_MIN && cx < LANE_X_MAX && cz > LANE_Z_MIN && cz < LANE_Z_MAX;
+    if (cx <= LANE_X_MIN || cx >= LANE_X_MAX) return false;
+    return (
+      a[0] > LANE_X_MIN && a[0] < LANE_X_MAX &&
+      b[0] > LANE_X_MIN && b[0] < LANE_X_MAX &&
+      c[0] > LANE_X_MIN && c[0] < LANE_X_MAX
+    );
   };
 
-  // Murs: keep only vertical-ish faces (|physics Y normal| < 0.5), AND outside the
-  // plunger lane (so no surprise mesh wall traps the ball going up the corridor).
+  // Murs: keep any face that's not strictly horizontal (|physics Y normal| < 0.85).
+  // 0.85 keeps everything except quasi-flat floor/ceiling tops, including curved wall
+  // sections, slingshot ramps, and dome edges. Anything stricter (e.g. 0.5 / 0.7) was
+  // poking gaps in slanted wall sections that the ball squeezed through.
   const keepMursTri = (
     a: [number, number, number],
     b: [number, number, number],
@@ -256,22 +285,24 @@ export async function loadPlayfieldGeometry(
     if (inLane(a, b, c)) return false;
     const n = normal(a, b, c);
     if (!n) return false;
-    return Math.abs(n[1]) <= 0.5;
+    return Math.abs(n[1]) <= 0.85;
   };
 
   // Wall meshes — vertical faces become physical collision surfaces (filtered by keepMursTri).
   // Patterns are matched as substrings against mesh names in the GLB.
   // Adding a `col_wall_*` or `col_ref_*` family in Blender is enough — register here once
   // so the loader auto-collects every mesh whose name contains the substring.
-  // Conservative wall list: only meshes we KNOW form clean vertical walls.
-  // Reference meshes (col_ref_flipper / col_ref_plunger / col_ref_floor) are excluded
-  // because their geometry often has sharp interior angles that trap the ball mid-air.
-  // The lane separator + ceiling already prevent the ball from escaping the playfield,
-  // so the rails aren't structurally necessary.
+  // Conservative wall list: only meshes we KNOW form clean vertical walls outside the lane zone.
+  // col_ref_flipper / col_ref_plunger / col_wall_frame are extracted separately via frameWalls
+  // (no inLane filter) because their geometry sits inside the lane zone (X≈3–4.5).
   const WALL_MESHES = [
-    'col_wall_frame',         // col_wall_frame_black + col_wall_frame_003..009
-    'col_wall_main_outer',
-    'col_wall_shooter',
+    // col_wall_frame_* extracted separately (frameWalls below) without the inLane filter —
+    // col_wall_frame_black sits inside the lane zone (X≈3–4.5) so every triangle would be
+    // stripped by the inLane check here.
+    // col_wall_main_outer moved to CLIPPED_MESHES — its right side (X=[3.3,4.16]) is inside
+    // the inLane zone, so the vertex-based check would strip the entire right wall portion.
+    // The X-clip extraction below preserves it clipped to X=3.3 instead.
+    // col_wall_shooter omitted — it blocks the central passage the ball must travel through.
     'col_wall_panel',
     'col_wall_left_fill',
     'col_wall_slingshots',
@@ -288,12 +319,9 @@ export async function loadPlayfieldGeometry(
     // extraction drops the bottom band to the floor so the wall actually blocks the ball.
   ] as const;
 
-  // Apron walls: same vertical-face filter as the other walls, but the bottom edge is
-  // pulled down to the floor (Y = -0.1) so there is no gap for the ball to pass under.
-  // Threshold 0.5 is safely between the apron bottoms (0.12–0.31) and tops (1.5+).
-  const APRON_MESHES = ['col_wall_apron'] as const;
-  const dropApronBottom = (v: [number, number, number]): [number, number, number] =>
-    v[1] < 0.5 ? [v[0], -0.1, v[2]] : v;
+  // col_wall_main_outer + col_wall_apron extraction handled below as raw trimeshes
+  // (no clipping, no filter) — the corridor stays passable thanks to the lane
+  // separator box wall and the outer boundary box wall.
 
   // Meshes extracted with ALL triangles (no normal filter) — ramps whose sloped
   // surfaces need to be walked through.
@@ -311,8 +339,36 @@ export async function loadPlayfieldGeometry(
     // None of the all-face meshes present in this GLB — not an error.
   }
 
-  // Floor meshes — automatically collect every col_floor_* mesh except col_floor_base.
-  // Adding col_floor_* in Blender is enough; no code change needed.
+  // Frame / plunger / flipper ref meshes — extracted WITHOUT the inLane filter because
+  // these meshes sit inside the lane zone (X≈3–4.5) and every triangle would otherwise
+  // be stripped by the inLane check in keepMursTri.
+  // keepMursTri_noLane still removes near-horizontal faces (tops/bottoms) so they don't
+  // act as launch ramps or trap the ball against the ceiling.
+  const keepMursTri_noLane = (
+    a: [number, number, number],
+    b: [number, number, number],
+    c: [number, number, number],
+  ): boolean => {
+    const n = normal(a, b, c);
+    if (!n) return false;
+    return Math.abs(n[1]) <= 0.85;
+  };
+  const FRAME_WALL_MESHES = [
+    'col_wall_frame',    // col_wall_frame_black + col_wall_frame_003..009
+    'col_ref_plunger',   // col_ref_plunger_003/006/007/008/009 — plunger lane guide rails
+    'col_ref_flipper',   // col_ref_flipper_007/030 + others — walls around the flipper area
+  ] as const;
+  let frameWalls: MeshGeometry | null = null;
+  try {
+    frameWalls = extractMesh(FRAME_WALL_MESHES, keepMursTri_noLane);
+  } catch {
+    // None of the frame/ref meshes present in this GLB — not an error.
+  }
+
+  // Base floor meshes (col_floor_*) — used for both the floor trimesh AND the
+  // addInclinedFloor slope calculation. Keeping these separate from col_ref_floor_*
+  // prevents reference meshes from skewing the slope (which caused the ball to spawn
+  // inside the inclined box when the ref mesh increased max-Y).
   const floorMeshNames = root
     .listMeshes()
     .map((m) => m.getName() ?? '')
@@ -320,6 +376,14 @@ export async function loadPlayfieldGeometry(
   if (floorMeshNames.length === 0) {
     throw new Error('No col_floor_* meshes found in GLB');
   }
+
+  // Reference floor meshes (col_ref_floor_*) — extracted separately and added as a
+  // standalone trimesh collider so the exact visual floor surface has physics.
+  // These are intentionally excluded from the slope computation above.
+  const refFloorMeshNames = root
+    .listMeshes()
+    .map((m) => m.getName() ?? '')
+    .filter((n) => n.startsWith('col_ref_floor_') && !n.includes('base'));
 
   // --- Derive positions from named GLB nodes ---
   function nodeBbox(
@@ -408,18 +472,49 @@ export async function loadPlayfieldGeometry(
     });
   }
 
-  let aprons: MeshGeometry | null = null;
+  // col_wall_main_outer + col_wall_apron_* extracted as raw trimeshes with NO filter
+  // and no transform. The previous clipping + filtering was leaving gaps that let
+  // the ball squeeze through; keeping the full mesh closes them.
+  // The corridor itself is still kept clear by the lane separator box wall + the
+  // outer boundary box wall, so duplicating mesh geometry there is harmless.
+  let mainOuterRaw: MeshGeometry | null = null;
   try {
-    aprons = extractMesh(APRON_MESHES, keepMursTri, dropApronBottom);
+    mainOuterRaw = extractMesh(['col_wall_main_outer']);
   } catch {
-    // No apron meshes in this GLB — not an error.
+    // Not present — fine.
+  }
+
+  let apronRaw: MeshGeometry | null = null;
+  try {
+    apronRaw = extractMesh(['col_wall_apron']);
+  } catch {
+    // Not present — fine.
+  }
+
+  // Merge both into a single trimesh so the existing PlayfieldGeometry shape stays valid.
+  const aprons: MeshGeometry | null = mergeTrimeshes(mainOuterRaw, apronRaw);
+
+  // col_ref_floor_* extracted with NO normal filter — using the full mesh as a trimesh
+  // collider. keepSolTri was rejecting slanted floor sections whose normals were too
+  // shallow (e.g. cones, curved transitions in col_ref_floor_main), creating holes the
+  // ball fell through. Trimesh collision in Rapier already handles back-face rejection,
+  // so keeping every triangle is safe and closes the floor surface.
+  let refFloor: MeshGeometry | null = null;
+  if (refFloorMeshNames.length > 0) {
+    try {
+      refFloor = extractMesh(refFloorMeshNames);
+    } catch {
+      // No ref-floor meshes present — not an error.
+    }
   }
 
   return {
     sol: extractMesh(floorMeshNames, keepSolTri),
+    refFloor,
     murs: extractMesh(WALL_MESHES, keepMursTri),
     aprons,
     rampe,
+    frameWalls,
     derived: { flipperLeft, flipperRight, laneSeparatorX, laneSpawnX, bumpers },
   };
 }

@@ -3,8 +3,10 @@ import type { GamePublisher } from '../ports/game-publisher.js';
 import type { GameState } from '../../domain/game.js';
 import { PLAYFIELD } from '../../domain/playfield.js';
 
-// Ball drains when it passes the flipper line (drain end of table, +Z in physics).
-const DRAIN_Z = PLAYFIELD.flippers.left.z;
+// Ball drains when it reaches the back wall behind the flippers (Z≈7.5, clearly past the
+// flipper pivot at Z≈6.635). Using the flipper pivot as threshold was too aggressive —
+// the ball was reset while still near the flippers before the player could react.
+const DRAIN_Z = PLAYFIELD.drain.zThreshold;
 const FLIPPER_HIT_POINTS = 50;
 const BUMPER_HIT_POINTS = 100;
 
