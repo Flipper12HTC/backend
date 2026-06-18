@@ -24,4 +24,7 @@ export interface PhysicsWorld {
   setFlipperActive(side: FlipperSide, active: boolean): void;
   consumeFlipperHits(): number;
   consumeBumperHits(): BumperHit[];
+  /** X coordinate of the separator between the launch lane and the main playfield.
+   *  Derived from the GLB geometry at init time — not hardcoded. */
+  getLaneSeparatorX(): number;
 }
