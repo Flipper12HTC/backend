@@ -24,13 +24,12 @@ export const PLAYFIELD = {
     zMax: 8,
   },
 
-  // Pivot positions extracted from FlipperBase.glb (physics space after toPhysics()).
-  // Auto-overridden at init from the GLB via DerivedPositions; kept here as fallback only.
+  // Flipper pivots (physics space). Mirror in frontend TABLE.flippers.
   flippers: {
-    left: { x: -1.526, y: 0.35, z: 6.635 },
-    right: { x: 1.525, y: 0.35, z: 6.635 },
+    left: { x: -1.7, y: 0.5, z: 6.48 },
+    right: { x: 1.5, y: 0.5, z: 6.48 },
     length: 1.144,
-    restAngle: 0.3,
+    restAngle: 0.048,
     activeAngle: -0.5,
   },
 

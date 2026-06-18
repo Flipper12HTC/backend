@@ -57,7 +57,6 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   private _laneSeparatorX: number = PLAYFIELD.launchLane.separatorX;
   private _spawnX: number = PLAYFIELD.ball.spawn.x;
   private _spawnZ: number = PLAYFIELD.ball.spawn.z;
-  private _flipperPivots: { left: { x: number; y: number; z: number; length: number }; right: { x: number; y: number; z: number; length: number } } | null = null;
   private _derivedBumpers: BumperPosition[] = [];
 
   async init(config: InitConfig = {}): Promise<void> {
@@ -134,10 +133,6 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     this._spawnX = geom.derived.laneSpawnX;
     // _spawnZ is intentionally NOT overridden from the GLB — kept hardcoded so the ball
     // always spawns at the drain end of the lane, regardless of the lane mesh extent.
-    this._flipperPivots = {
-      left: geom.derived.flipperLeft,
-      right: geom.derived.flipperRight,
-    };
     this._derivedBumpers = geom.derived.bumpers;
 
     // Sol = base floor trimesh (col_floor_* meshes, stable slope).
@@ -184,11 +179,11 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   private addApronBoxes(): void {
     // Backup solid boxes for the apron guide surfaces and outer-wall inner face.
     // All positions derived from FlipperBase.glb inspection (physics space).
-    const halfH  = PLAYFIELD.wall.height / 2;
+    const halfH = PLAYFIELD.wall.height / 2;
     const zFront = 3.35;
-    const zBack  = 7.05;
-    const zCtr   = (zFront + zBack) / 2;   // ≈ 5.2
-    const zHalf  = (zBack - zFront) / 2;   // ≈ 1.85
+    const zBack = 7.05;
+    const zCtr = (zFront + zBack) / 2; // ≈ 5.2
+    const zHalf = (zBack - zFront) / 2; // ≈ 1.85
 
     // Left outlane separator (inner edge of left outlane channel, X ≈ -3.65).
     this.addBoxWall(-3.65, halfH, zCtr, 0.08, halfH, zHalf);
@@ -197,9 +192,9 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     // the lane-separator box inner face (this._laneSeparatorX).  No gap means the ball
     // cannot slip between the apron guide and the plunger-lane wall.
     const rightGuide = 2.94;
-    const sep        = this._laneSeparatorX; // 3.5 (or GLB-derived)
-    const rHalf      = (sep - rightGuide) / 2;
-    const rCtr       = rightGuide + rHalf;
+    const sep = this._laneSeparatorX; // 3.5 (or GLB-derived)
+    const rHalf = (sep - rightGuide) / 2;
+    const rCtr = rightGuide + rHalf;
     this.addBoxWall(rCtr, halfH, zCtr, rHalf, halfH, zHalf);
   }
 
@@ -330,14 +325,12 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   }
 
   private buildFlipper(side: FlipperSide): FlipperBody {
-    const derived = this._flipperPivots?.[side];
-    const fallback = side === 'left' ? PLAYFIELD.flippers.left : PLAYFIELD.flippers.right;
-    const pivot = derived ?? fallback;
+    const pivot = side === 'left' ? PLAYFIELD.flippers.left : PLAYFIELD.flippers.right;
     const sign = side === 'left' ? -1 : 1;
     const restAngle = sign * PLAYFIELD.flippers.restAngle;
     const activeAngle = sign * PLAYFIELD.flippers.activeAngle;
     const dir = side === 'left' ? 1 : -1;
-    const halfLength = (derived?.length ?? PLAYFIELD.flippers.length) / 2;
+    const halfLength = PLAYFIELD.flippers.length / 2;
 
     // pivot.y from the GLB (bbFL.minY) is the floor level at the flipper Z position.
     // Using it directly as the body CENTER would place half the arm below the floor and
