@@ -15,7 +15,7 @@ function parseSide(raw: unknown): FlipperSide | null {
 }
 
 export async function registerGameRoutes(app: FastifyInstance, deps: AppDeps): Promise<void> {
-  const { state, physics, publisher } = deps;
+  const { state, physics, publisher, scoreRepo } = deps;
   const plunger = createPlungerState();
 
   app.post('/game/start', async (_req, reply) => {
@@ -38,7 +38,7 @@ export async function registerGameRoutes(app: FastifyInstance, deps: AppDeps): P
       await reply.code(409).send({ error: 'no game running' });
       return;
     }
-    endGame(state, publisher);
+    endGame(state, publisher, scoreRepo);
     return { ok: true, status: state.status };
   });
 

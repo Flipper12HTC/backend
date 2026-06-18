@@ -105,8 +105,14 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     // Re-enable by uncommenting when col_bumper_marker_* meshes are added to the GLB.
   }
 
-  private buildBumper(b: { id: string; x: number; z: number; radius: number; scale?: number }): void {
-    const radius = b.radius * (b.scale ?? 1);
+  private buildBumper(b: {
+    id: string;
+    x: number;
+    z: number;
+    radius: number;
+    scale: number;
+  }): void {
+    const radius = b.radius * b.scale;
     const halfHeight = PLAYFIELD.wall.height / 2;
     const body = this.world.createRigidBody(
       this.r.RigidBodyDesc.fixed().setTranslation(b.x, halfHeight, b.z),

@@ -5,9 +5,11 @@ import type { FastifyInstance } from 'fastify';
 import type { WebSocket } from '@fastify/websocket';
 import type { PhysicsWorld } from '../../application/ports/physics-world.js';
 import type { GamePublisher } from '../../application/ports/game-publisher.js';
+import type { ScoreRepo } from '../../application/ports/score-repo.js';
 import type { GameState } from '../../domain/game.js';
 import { registerHealthRoute } from './routes/health.js';
 import { registerGameRoutes } from './routes/game.js';
+import { registerScoreRoutes } from './routes/scores.js';
 import { registerGateway } from './ws/gateway.js';
 
 export interface AppDeps {
@@ -15,6 +17,7 @@ export interface AppDeps {
   physics: PhysicsWorld;
   publisher: GamePublisher;
   state: GameState;
+  scoreRepo?: ScoreRepo;
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
@@ -26,6 +29,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   registerGateway(app, deps.onWsConnect);
   await registerHealthRoute(app);
   await registerGameRoutes(app, deps);
+  if (deps.scoreRepo) await registerScoreRoutes(app, deps.scoreRepo);
   return app;
 }
 

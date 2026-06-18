@@ -1,5 +1,6 @@
 import type { PhysicsWorld } from '../ports/physics-world.js';
 import type { GamePublisher } from '../ports/game-publisher.js';
+import type { ScoreRepo } from '../ports/score-repo.js';
 import type { GameState } from '../../domain/game.js';
 import { PLAYFIELD } from '../../domain/playfield.js';
 
@@ -26,6 +27,7 @@ export function tickGame(
   physics: PhysicsWorld,
   publisher: GamePublisher,
   dt: number,
+  repo?: ScoreRepo,
 ): void {
   if (state.status !== 'running') return;
 
@@ -75,6 +77,17 @@ export function tickGame(
       type: 'game_over',
       payload: { finalScore: state.score },
     });
+    if (repo && state.score > 0) {
+      void repo
+        .saveFinal({
+          playerId: state.player.wallet ?? 'guest',
+          points: state.score,
+          achievedAt: new Date(),
+        })
+        .catch(() => {
+          /* repo errors are non-fatal */
+        });
+    }
     return;
   }
 
