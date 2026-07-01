@@ -1,5 +1,7 @@
 import type { Vec3 } from '../../domain/ball.js';
 import type { FlipperSide } from '../../domain/flipper.js';
+import type { PaymentStatus } from '../../domain/payment.js';
+import type { TournamentStatus } from '../../domain/tournament.js';
 
 export interface BallPositionEvent {
   type: 'ball_position';
@@ -41,6 +43,49 @@ export interface BallLaunchedEvent {
   payload: { force: number };
 }
 
+// --- Blockchain / tournament events (rendered by the screens, never computed there) ---
+
+export interface WalletConnectedEvent {
+  type: 'wallet_connected';
+  payload: { walletShort: string }; // anonymised XXX...XXX
+}
+
+export interface PaymentProgressEvent {
+  type: 'payment_progress';
+  payload: {
+    reference: string;
+    receivedSol: number;
+    targetSol: number;
+    remainingSol: number;
+    status: PaymentStatus;
+  };
+}
+
+export interface TournamentSummary {
+  id: string;
+  status: TournamentStatus;
+  participants: number;
+  maxParticipants: number;
+  entryFeeSol: number;
+  prizeSol: number;
+  winnerShort: string | null;
+}
+
+export interface TournamentUpdateEvent {
+  type: 'tournament_update';
+  payload: TournamentSummary;
+}
+
+export interface PayoutEvent {
+  type: 'payout';
+  payload: { walletShort: string; amountSol: number; signature: string };
+}
+
+export interface RefundEvent {
+  type: 'refund';
+  payload: { walletShort: string; amountSol: number; signature: string | null };
+}
+
 export type GameEvent =
   | BallPositionEvent
   | ScoreUpdateEvent
@@ -49,7 +94,12 @@ export type GameEvent =
   | SlingshotHitEvent
   | GameOverEvent
   | FlipperStateEvent
-  | BallLaunchedEvent;
+  | BallLaunchedEvent
+  | WalletConnectedEvent
+  | PaymentProgressEvent
+  | TournamentUpdateEvent
+  | PayoutEvent
+  | RefundEvent;
 
 export interface GamePublisher {
   broadcast(event: GameEvent): void;
