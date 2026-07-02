@@ -101,8 +101,15 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     this.ballBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.leftFlipper = this.buildFlipper('left');
     this.rightFlipper = this.buildFlipper('right');
-    // Bumpers disabled — GLB does not contain bumper geometry yet.
-    // Re-enable by uncommenting when col_bumper_marker_* meshes are added to the GLB.
+
+    // Activate the jellyfish bumpers. We build only the bumpers that have a
+    // matching jellyfish model on the front-screen (b2, b3) so every scored
+    // hit produces a visible reaction + electric discharge. Extend BUMPER_IDS
+    // (and the front-screen createJellyfishBumpers ids) to add more.
+    const BUMPER_IDS = ['b2', 'b3'];
+    for (const b of PLAYFIELD.bumpers) {
+      if (BUMPER_IDS.includes(b.id)) this.buildBumper(b);
+    }
   }
 
   private buildBumper(b: {
