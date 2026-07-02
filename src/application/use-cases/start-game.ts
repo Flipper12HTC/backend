@@ -8,12 +8,20 @@ export function startGame(state: GameState, physics: PhysicsWorld, publisher: Ga
   state.score = 0;
   state.ballsLeft = INITIAL_BALLS;
   state.multiplier = INITIAL_MULTIPLIER;
+  state.bumperHitCount = 0;
+  state.boostUntil = null;
   state.activeFlipper = null;
   state.ballInLane = true;
   state.startedAt = Date.now();
   state.endedAt = null;
 
   physics.resetBall();
+
+  // Clear any lingering boost overlay from a previous game on all screens.
+  publisher.broadcast({
+    type: 'boost_changed',
+    payload: { active: false, multiplier: state.multiplier, durationMs: 0 },
+  });
 
   publisher.broadcast({
     type: 'score_update',
