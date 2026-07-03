@@ -71,6 +71,19 @@ const FLOOR_SLOPE = 0.332;
 const PLANE_NY = Math.cos(Math.atan(FLOOR_SLOPE)); // ≈0.949
 const PLANE_NZ = Math.sin(Math.atan(FLOOR_SLOPE)); // ≈0.315
 
+// Pop-bumper kick. Relying on restitution alone gives a weak, inconsistent bounce:
+// the multi-substep CCD contact absorbs most of the normal velocity, so the ball
+// barely leaves. Instead, on contact we *set* the ball's horizontal velocity to point
+// radially away from the bumper centre at a guaranteed pop speed — killing the inward
+// component. Slow balls get a firm kick (MIN); fast balls keep their energy plus a
+// little (incoming * GAIN). Vertical velocity is preserved so gravity still applies.
+// 10 (not 6.5): the punchy-bumper feel — slow touches still get a solid pop; fast
+// hits scale up via the gain and are clamped by MAX_BALL_XZ_SPEED.
+const BUMPER_MIN_POP_SPEED = 10;
+const BUMPER_POP_GAIN = 1.15;
+// Minimum time between two registered pops on the same bumper.
+const BUMPER_KICK_COOLDOWN = 0.15;
+
 function quatFromY(angle: number): { x: number; y: number; z: number; w: number } {
   const half = angle / 2;
   return { x: 0, y: Math.sin(half), z: 0, w: Math.cos(half) };
@@ -88,7 +101,13 @@ export class RapierPhysicsWorld implements PhysicsWorld {
   private eventQueue!: RapierLib.EventQueue;
   private flipperHits = 0;
   private bumpers = new Map<number, BumperHit>();
+  private bumperRadius = new Map<number, number>();
   private bumperHits: BumperHit[] = [];
+  // Per-bumper cooldown (seconds remaining). While a ball rattles against a bumper,
+  // Rapier can fire CollisionStarted every substep; without this guard each event would
+  // re-apply the kick (energy stacks to absurd speeds) and re-award score. One pop per
+  // contact window instead.
+  private bumperCooldown = new Map<number, number>();
   private _laneSeparatorX: number = PLAYFIELD.launchLane.separatorX;
   private _spawnX: number = PLAYFIELD.ball.spawn.x;
   private _spawnZ: number = PLAYFIELD.ball.spawn.z;
@@ -152,7 +171,15 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     this.ballBody.setAngvel({ x: 0, y: 0, z: 0 }, true);
     this.leftFlipper = this.buildFlipper('left');
     this.rightFlipper = this.buildFlipper('right');
-    for (const b of PLAYFIELD.bumpers) {
+    // Bumper colliders. Positions come from PLAYFIELD.bumpers (extracted from the map
+    // meshes) since the GLB has no col_bumper_marker_* geometry, so _derivedBumpers is
+    // empty. Prefer GLB-derived markers if present (future maps), else fall back to the
+    // hardcoded constants — the frontend mirrors the same list in physics-debug.
+    const bumperSpecs =
+      this._derivedBumpers.length > 0
+        ? this._derivedBumpers.map((b) => ({ ...b, scale: 1 }))
+        : PLAYFIELD.bumpers;
+    for (const b of bumperSpecs) {
       this.buildBumper(b);
     }
   }
@@ -172,14 +199,43 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     const collider = this.world.createCollider(
       this.r.ColliderDesc.cylinder(halfHeight, radius)
         // Modest passive restitution — the pop comes from the ACTIVE radial kick in
-        // applyBumperKick(). Pure high restitution (1.2) was direction-dumb: fast
+        // kickBallFromBumper(). Pure high restitution (1.2) was direction-dumb: fast
         // upfield shots reflected straight back into the lower half of the table.
+        // Passive contact only matters during the kick cooldown window.
         .setRestitution(0.7)
         .setFriction(0.2)
         .setActiveEvents(this.r.ActiveEvents.COLLISION_EVENTS),
       body,
     );
     this.bumpers.set(collider.handle, { id: b.id, x: b.x, z: b.z });
+    this.bumperRadius.set(collider.handle, radius);
+  }
+
+  // Push the ball radially away from a bumper it just touched (arcade pop-bumper kick).
+  private kickBallFromBumper(b: BumperHit, radius: number): void {
+    const p = this.ballBody.translation();
+    const v = this.ballBody.linvel();
+    let dx = p.x - b.x;
+    let dz = p.z - b.z;
+    let len = Math.hypot(dx, dz);
+    if (len < 1e-4) {
+      // Ball almost dead-centre: default kick up the table (toward the far end, -Z).
+      dx = 0;
+      dz = -1;
+      len = 1;
+    }
+    const incoming = Math.hypot(v.x, v.z);
+    const popSpeed = Math.max(BUMPER_MIN_POP_SPEED, incoming * BUMPER_POP_GAIN);
+    const scale = popSpeed / len;
+    // Set (not add) horizontal velocity to a clean radial-outward pop; keep vertical.
+    this.ballBody.setLinvel({ x: dx * scale, y: v.y, z: dz * scale }, true);
+    // Snap the ball back onto the bumper surface so a fast dead-centre hit can't sink
+    // in (or tunnel) before the outward velocity takes effect on the next substep.
+    const surfaceDist = radius + PLAYFIELD.ball.radius + 0.02;
+    if (len < surfaceDist) {
+      const push = surfaceDist / len;
+      this.ballBody.setTranslation({ x: b.x + dx * push, y: p.y, z: b.z + dz * push }, true);
+    }
   }
 
   private async buildPlayfieldFromGlb(path: string): Promise<void> {
@@ -633,6 +689,7 @@ export class RapierPhysicsWorld implements PhysicsWorld {
       this.tickFlipper(this.rightFlipper, subDt);
       this.tickRampEntry();
       this.tickRampClimb();
+      this.tickBumperCooldowns(subDt);
       this.world.step(this.eventQueue);
       this.eventQueue.drainCollisionEvents((h1, h2, started) => {
         if (!started) return;
@@ -652,9 +709,10 @@ export class RapierPhysicsWorld implements PhysicsWorld {
           return;
         }
         const bumper = this.bumpers.get(other);
-        if (bumper) {
+        if (bumper && (this.bumperCooldown.get(other) ?? 0) <= 0) {
+          this.bumperCooldown.set(other, BUMPER_KICK_COOLDOWN);
           this.bumperHits.push(bumper);
-          this.applyBumperKick(bumper);
+          this.kickBallFromBumper(bumper, this.bumperRadius.get(other) ?? 0.4);
         }
       });
       // Pinball constraints, applied PER SUBSTEP. The flipper arm tip moves at up to
@@ -707,34 +765,18 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     this.tickStuckWatchdog();
   }
 
+  private tickBumperCooldowns(dt: number): void {
+    for (const [handle, remaining] of this.bumperCooldown) {
+      const next = remaining - dt;
+      if (next <= 0) this.bumperCooldown.delete(handle);
+      else this.bumperCooldown.set(handle, next);
+    }
+  }
+
   private isFlipperHandle(handle: number): boolean {
     return (
       handle === this.leftFlipper.colliderHandle || handle === this.rightFlipper.colliderHandle
     );
-  }
-
-  // Pop bumper: like the real solenoid ring, kick the ball RADIALLY away from the
-  // bumper centre at a fixed speed on every contact. Restitution alone can't do this —
-  // it only mirrors the incoming direction, so a fast upfield shot came straight back
-  // down. The active kick scatters play in all directions and feels punchy at any
-  // approach speed.
-  private static readonly BUMPER_KICK_SPEED = 10;
-
-  private applyBumperKick(b: BumperHit): void {
-    const p = this.ballBody.translation();
-    let dx = p.x - b.x;
-    let dz = p.z - b.z;
-    const len = Math.hypot(dx, dz);
-    if (len < 1e-6) {
-      dx = 0;
-      dz = 1;
-    } else {
-      dx /= len;
-      dz /= len;
-    }
-    const v = this.ballBody.linvel();
-    const kick = RapierPhysicsWorld.BUMPER_KICK_SPEED;
-    this.ballBody.setLinvel({ x: dx * kick, y: Math.min(v.y, 2.0), z: dz * kick }, true);
   }
 
   // Guarantee a minimum launch speed after any flipper contact.
