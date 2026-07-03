@@ -34,9 +34,9 @@ export const PLAYFIELD = {
   },
 
   ball: {
-    radius: 0.2,
+    radius: 0.1,
     // X is auto-overridden from the col_wall_plunger_lane centre at runtime.
-    // Y=1.0: floor top at Z=6 is Y≈0.635; ball radius=0.2 → resting center ≈ Y=0.835; 1.0 gives clearance.
+    // Y=1.0: floor top at Z=6 is Y≈0.635; ball radius=0.10 → resting center ≈ Y=0.735; 1.0 gives clearance.
     spawn: { x: 4.0, y: 1.0, z: 6.0 },
   },
 
