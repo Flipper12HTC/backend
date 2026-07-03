@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import type { AppDeps } from '../app.js';
 import { startGame } from '../../../application/use-cases/start-game.js';
 import { endGame } from '../../../application/use-cases/end-game.js';
+import { activateBoost } from '../../../application/use-cases/activate-boost.js';
 import { setFlipperState } from '../../../application/use-cases/set-flipper-state.js';
 import {
   createPlungerState,
@@ -31,6 +32,12 @@ export async function registerGameRoutes(app: FastifyInstance, deps: AppDeps): P
   app.post('/game/restart', async () => {
     startGame(state, physics, publisher);
     return { ok: true, status: state.status };
+  });
+
+  // TEMP demo mode: force the x3 jellyfish boost (bound to H key on the screens)
+  app.post('/game/boost', async () => {
+    activateBoost(state, publisher);
+    return { ok: true, multiplier: state.multiplier };
   });
 
   app.post('/game/end', async (_req, reply) => {

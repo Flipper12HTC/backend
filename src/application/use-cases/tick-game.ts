@@ -16,6 +16,9 @@ import { PLAYFIELD } from '../../domain/playfield.js';
 const DRAIN_Z = PLAYFIELD.drain.zThreshold;
 const FLIPPER_HIT_POINTS = 50;
 const BUMPER_HIT_POINTS = 100;
+// Active "pop": on top of the collider's restitution, kick the ball radially away from
+// the bumper centre so a slow-rolling ball still bounces off punchily like a real bumper.
+const BUMPER_KICK = 7;
 
 function publishScoreUpdate(state: GameState, publisher: GamePublisher): void {
   publisher.broadcast({
@@ -35,6 +38,20 @@ export function tickGame(
   dt: number,
   repo?: ScoreRepo,
 ): void {
+  // Expire the x3 boost on wall-clock time — BEFORE the running-guard so a boost triggered
+  // from the idle/over screen (the H demo key) always reverts instead of sticking forever.
+  if (state.boostUntil !== null && Date.now() >= state.boostUntil) {
+    state.boostUntil = null;
+    state.multiplier = INITIAL_MULTIPLIER;
+    publisher.broadcast({
+      type: 'boost_changed',
+      payload: { active: false, multiplier: state.multiplier, durationMs: 0 },
+    });
+    // score_update flips the scoreboard into "running", so only send it while actually
+    // running; on idle/over the pill reverts from the boost_changed multiplier instead.
+    if (state.status === 'running') publishScoreUpdate(state, publisher);
+  }
+
   if (state.status !== 'running') return;
 
   physics.step(dt);
@@ -42,13 +59,6 @@ export function tickGame(
   publisher.broadcast({ type: 'ball_position', payload: pos });
 
   let boostChanged = false;
-  // Expire the x3 boost on wall-clock time so it survives ball respawns.
-  if (state.boostUntil !== null && Date.now() >= state.boostUntil) {
-    state.boostUntil = null;
-    state.multiplier = INITIAL_MULTIPLIER;
-    boostChanged = true;
-  }
-
   const hits = physics.consumeFlipperHits();
   const bumperHits = physics.consumeBumperHits();
   let scoreChanged = false;
@@ -60,6 +70,12 @@ export function tickGame(
     state.score += BUMPER_HIT_POINTS * state.multiplier;
     publisher.broadcast({ type: 'bumper_hit', payload: { id: b.id, x: b.x, z: b.z } });
     scoreChanged = true;
+
+    // Kick the ball radially away from the bumper centre (XZ plane) for a punchy pop.
+    const dx = pos.x - b.x;
+    const dz = pos.z - b.z;
+    const len = Math.hypot(dx, dz) || 1;
+    physics.applyBallImpulse({ x: (dx / len) * BUMPER_KICK, y: 0, z: (dz / len) * BUMPER_KICK });
 
     // Every 10th jellyfish hit (re)triggers a 10s x3 boost.
     state.bumperHitCount += 1;
@@ -81,7 +97,10 @@ export function tickGame(
       },
     });
   }
-  if (scoreChanged) publishScoreUpdate(state, publisher);
+  // Emit score_update on a boost change too (even with no scoring): the multiplier
+  // flipped, and the scoreboard's x{multiplier} pill is driven by score_update — without
+  // this it stays stuck on "x3" after the boost ends.
+  if (scoreChanged || boostChanged) publishScoreUpdate(state, publisher);
   const sep = physics.getLaneSeparatorX();
   if (!state.ballInLane) {
     // Nudge ball toward main field when near far end of lane (Z≈-7 to -8).
