@@ -120,7 +120,13 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     scale: number;
   }): void {
     const radius = b.radius * b.scale;
-    const halfHeight = PLAYFIELD.wall.height / 2;
+    // The playfield floor is INCLINED: its surface rises from Y≈0 at the drain end to
+    // Y≈7.5 where the bumpers sit near the far end. A cylinder anchored at wall.height/2
+    // had its top at Y=7 — just BELOW the raised floor — so the ball rolled straight over
+    // it and never collided (both bumpers looked "dead"). Make the post span the full
+    // floor range (base at 0, top well above the highest floor point) so the ball always
+    // meets the cylinder's side, whatever the local floor height.
+    const halfHeight = PLAYFIELD.wall.height; // spans [0, 2*wall.height] = [0, 14]
     const body = this.world.createRigidBody(
       this.r.RigidBodyDesc.fixed().setTranslation(b.x, halfHeight, b.z),
     );
