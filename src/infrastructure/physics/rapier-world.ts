@@ -34,7 +34,12 @@ interface FlipperBody {
 const FLIPPER_HALF_HEIGHT = 0.28;
 const FLIPPER_HALF_THICKNESS = 0.2;
 const FLIPPER_BORDER_RADIUS = 0.06;
-const FLIPPER_ROTATION_SPEED = 70;
+// 40 rad/s (was 70): at 70 the whole 0.548 rad swing completed in <4 substeps — the
+// arm tip swept 0.167 units per substep (more than the ball RADIUS), so the returning
+// arm rotated straight THROUGH a ball sitting under it and dropped it behind the
+// flipper. At 40 the tip sweep is 0.095/substep (< radius, no angular tunneling) and
+// the full swing still takes only ~14 ms — imperceptible to the player.
+const FLIPPER_ROTATION_SPEED = 40;
 // Passive contact restitution. A RESTING flipper is a dead surface the ball can land
 // on and roll along — the launch energy comes exclusively from the active-swing boost
 // in the collision handler (the old 1.3 super-elastic value fired the ball back even
@@ -328,6 +333,45 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     // against the black.003 deflector quad instead of sliding along it to the
     // outlane). Level it with an inclined patch flush with the nominal floor.
     this.addFloorPatch(-3.9, 0.28, 3.7, 0.55);
+    // Guard rail flanking the UPPER ramp channel on the east side — the invisible
+    // "wire form" of a real ramp. Elevated so ground balls pass under; catches hops.
+    this.addGuardRail(-2.32, 0.7, 2.5);
+    // The col_wall_black.001/.003 crests barely rise above the local floor (0.13–0.6)
+    // and their sloped faces act as launch ramps — the ball ROLLED up and over them
+    // (surface climbs bypass the ballistic off-plane cap). Ground-level walls make
+    // them the solid obstacles the visuals show:
+    // black.003 north crest (X≈-3.61, crest just +0.13): full wall, the descent
+    // corridor runs WEST of it and stays open.
+    this.addBoxWall(-3.61, 3.2, -0.3, 0.08, 0.8, 0.75);
+    // black.003 eastern arm (X≈-2.45, Z 1→2.6, crest +0.21): full wall flush with the
+    // arm; the ramp channel stays west of X=-2.48.
+    this.addBoxWall(-2.42, 2.4, 1.75, 0.06, 0.8, 0.85);
+    // black.001 east section (X -2.05→-1.35): interior cap block over the crest —
+    // climbers summit into it and slide back. Limited to Z -1.55→-0.35 (upfield of
+    // that, the rising floor buries the structure — a taller/longer cap would poke
+    // above the floor as an invisible field wall) and east of X=-2.1 so ramp-exit
+    // balls (X -3.2→-2.2, Y≈3.0 at Z≈-0.6) fly clear.
+    this.addBoxWall(-1.7, 3.55, -0.95, 0.35, 0.6, 0.6);
+    // West side: a thin rail left a 0.12-wide slot against col_wall_left_fill where
+    // the ball rattled forever. Fill the whole gap (X -4.16→-3.90) with solid blocks
+    // instead, leaving a 0.5-high ground tunnel so the left-channel descent corridor
+    // still flows underneath.
+    for (const [z0, z1] of [
+      [1.2, 1.75],
+      [1.75, 2.3],
+      [2.3, 2.85],
+    ] as const) {
+      const bottom = (8 - z0) * FLOOR_SLOPE + 0.5;
+      const top = 3.4;
+      this.addBoxWall(
+        -4.03,
+        (bottom + top) / 2,
+        (z0 + z1) / 2,
+        0.13,
+        (top - bottom) / 2,
+        (z1 - z0) / 2,
+      );
+    }
     // Backup box colliders for the apron inlane/outlane guides.
     // The apron trimesh (col_wall_apron_*) can miss fast-moving balls — these boxes
     // duplicate the key boundary surfaces so there is always a solid fallback.
@@ -500,6 +544,26 @@ export class RapierPhysicsWorld implements PhysicsWorld {
       this.r.ColliderDesc.cuboid(0.215, thickness, halfLen).setFriction(0.0).setRestitution(0.1),
       body,
     );
+  }
+
+  // Elevated guard rail along X=x, Z∈[zMin,zMax] — the invisible "wire form" every
+  // real ramp has. The rail bottom floats 0.4 above the MAIN floor line so ground
+  // balls roll under it untouched; the band 0.4→1.6 above the floor blocks the hops
+  // a ball can take from the (higher) ramp surface. Emitted as short level segments
+  // because the floor line rises along Z.
+  private addGuardRail(x: number, zMin: number, zMax: number, bottomOffset = 0.35): void {
+    const SEG = 0.5;
+    for (let z0 = zMin; z0 < zMax; z0 += SEG) {
+      const z1 = Math.min(z0 + SEG, zMax);
+      const zc = (z0 + z1) / 2;
+      // Floor is highest at the segment's LOW-z end — clearance is computed there.
+      // Default +0.35 clears ground balls (top = floor+0.2) while catching hops from
+      // the higher ramp surface (ball centre ≈ floor+0.65). Pass a larger offset when
+      // a descent corridor runs beneath the rail.
+      const bottom = (8 - z0) * FLOOR_SLOPE + bottomOffset;
+      const top = bottom + 1.2;
+      this.addBoxWall(x, (bottom + top) / 2, zc, 0.06, (top - bottom) / 2, (z1 - z0) / 2);
+    }
   }
 
   private addRampPatch(): void {
@@ -740,16 +804,22 @@ export class RapierPhysicsWorld implements PhysicsWorld {
       // centre field got a 7 m/s vertical allowance, leapt ~1.5 units and landed on
       // top of / inside wall geometry.
       const channelXMax = bp.z > 2 ? -2.8 : bp.z > 1 ? -2.2 : -0.7;
+      // West bound -3.95 (not -4.1): the channel floor never goes past X≈-3.92, and
+      // extending the band over the under-ramp tunnel let a ball rattle in there
+      // forever with the relaxed cap (too fast for the stuck watchdog to trigger).
       const onRampSurface =
-        bp.x > -4.1 &&
+        bp.x > -3.95 &&
         bp.x < channelXMax &&
         bp.z > -0.7 &&
         bp.z < 4.35 &&
         bp.y < 3.4 &&
         bp.y > (8 - bp.z) * FLOOR_SLOPE + 0.25;
       const inEntry = bp.x > -4.1 && bp.x < -2.4 && bp.z >= 3.8 && bp.z < 5.6 && bp.y < 3.4;
+      // Default 1.5: max ballistic rise ≈ 0.07 (under one ball radius) — visually the
+      // ball stays glued to the playfield. 2.2 still showed a perceptible hop.
+      // Channel 2.8 (was 3.5): hop ≤0.25, contained by the guard rails either side.
       const maxOffPlane =
-        this.nudgeGraceTicks > 0 ? 6.0 : inEntry ? 7.0 : onRampSurface ? 3.5 : 2.2;
+        this.nudgeGraceTicks > 0 ? 6.0 : inEntry ? 7.0 : onRampSurface ? 2.8 : 1.5;
       // Table plane normal (X=0): n = (0, cosθ, sinθ), θ = atan(FLOOR_SLOPE).
       const offPlane = vy * PLANE_NY + vz * PLANE_NZ;
       const excess = offPlane - maxOffPlane;
