@@ -14,6 +14,11 @@ export async function refundPayment(
   const intent = store.get(reference);
   if (!intent) throw new Error('payment intent not found');
 
+  // Terminal states are final: never transfer twice for the same intent.
+  if (intent.status === 'refunded' || intent.status === 'cancelled') {
+    return { intent, signature: null };
+  }
+
   if (intent.receivedLamports <= 0) {
     const cancelled: PaymentIntent = { ...intent, status: 'cancelled' };
     store.save(cancelled);

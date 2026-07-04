@@ -67,6 +67,8 @@ export function addParticipant(
   if (t.status !== 'open') throw new Error('tournament is not open');
   if (isFull(t)) throw new Error('tournament is full');
   if (hasJoined(t, wallet)) throw new Error('wallet already joined');
+  if (t.participants.some((p) => p.paymentReference === paymentReference))
+    throw new Error('payment reference already used');
   const participant: Participant = { wallet, paymentReference, score: null, joinedAt: now };
   return { ...t, participants: [...t.participants, participant], lastActivityAt: now };
 }
