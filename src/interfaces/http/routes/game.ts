@@ -24,12 +24,14 @@ export async function registerGameRoutes(app: FastifyInstance, deps: AppDeps): P
       return;
     }
     startGame(state, physics, publisher);
+    deps.onGameStart?.();
     return { ok: true, status: state.status };
   });
 
   // TEMP test mode: hard reset of the running game (bound to R key on the screens)
   app.post('/game/restart', async () => {
     startGame(state, physics, publisher);
+    deps.onGameRestart?.();
     return { ok: true, status: state.status };
   });
 

@@ -7,9 +7,11 @@ import type { PhysicsWorld } from '../../application/ports/physics-world.js';
 import type { GamePublisher } from '../../application/ports/game-publisher.js';
 import type { ScoreRepo } from '../../application/ports/score-repo.js';
 import type { GameState } from '../../domain/game.js';
+import type { ChallengeBox } from '../../domain/challenge.js';
 import { registerHealthRoute } from './routes/health.js';
 import { registerGameRoutes } from './routes/game.js';
 import { registerScoreRoutes } from './routes/scores.js';
+import { registerChallengeRoutes } from './routes/challenge.js';
 import { registerGateway } from './ws/gateway.js';
 
 export interface AppDeps {
@@ -18,6 +20,10 @@ export interface AppDeps {
   publisher: GamePublisher;
   state: GameState;
   scoreRepo?: ScoreRepo;
+  challengeBox?: ChallengeBox;
+  /** Challenge hooks: a plain start hides an unpaid QR, a restart offers a fresh one. */
+  onGameStart?: () => void;
+  onGameRestart?: () => void;
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
@@ -30,6 +36,7 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerHealthRoute(app);
   await registerGameRoutes(app, deps);
   if (deps.scoreRepo) await registerScoreRoutes(app, deps.scoreRepo);
+  if (deps.challengeBox) await registerChallengeRoutes(app, deps.challengeBox);
   return app;
 }
 

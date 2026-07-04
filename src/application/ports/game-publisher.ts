@@ -46,6 +46,19 @@ export interface BoostChangedEvent {
   payload: { active: boolean; multiplier: number; durationMs: number };
 }
 
+// Paid-challenge lifecycle, rendered as a QR code + banner on the backglass.
+export interface ChallengeUpdatedEvent {
+  type: 'challenge_updated';
+  payload: {
+    status: 'offered' | 'paid' | 'won' | 'lost' | 'none';
+    qrUrl: string | null;
+    walletShort: string | null;
+    entryFeeSol: number;
+    rewardSol: number;
+    targetScore: number;
+  };
+}
+
 export type GameEvent =
   | BallPositionEvent
   | ScoreUpdateEvent
@@ -55,7 +68,8 @@ export type GameEvent =
   | GameOverEvent
   | FlipperStateEvent
   | BallLaunchedEvent
-  | BoostChangedEvent;
+  | BoostChangedEvent
+  | ChallengeUpdatedEvent;
 
 export interface GamePublisher {
   broadcast(event: GameEvent): void;
