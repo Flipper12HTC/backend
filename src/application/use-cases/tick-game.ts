@@ -17,9 +17,6 @@ import { endGame } from './end-game.js';
 const DRAIN_Z = PLAYFIELD.drain.zThreshold;
 const FLIPPER_HIT_POINTS = 50;
 const BUMPER_HIT_POINTS = 100;
-// Active "pop": on top of the collider's restitution, kick the ball radially away from
-// the bumper centre so a slow-rolling ball still bounces off punchily like a real bumper.
-const BUMPER_KICK = 7;
 
 function publishScoreUpdate(state: GameState, publisher: GamePublisher): void {
   publisher.broadcast({
@@ -80,11 +77,8 @@ export function tickGame(
     publisher.broadcast({ type: 'bumper_hit', payload: { id: b.id, x: b.x, z: b.z } });
     scoreChanged = true;
 
-    // Kick the ball radially away from the bumper centre (XZ plane) for a punchy pop.
-    const dx = pos.x - b.x;
-    const dz = pos.z - b.z;
-    const len = Math.hypot(dx, dz) || 1;
-    physics.applyBallImpulse({ x: (dx / len) * BUMPER_KICK, y: 0, z: (dz / len) * BUMPER_KICK });
+    // The physical "pop" (radial kick) is applied in the physics adapter on contact
+    // (RapierPhysicsWorld.kickBallFromBumper) — here we only handle scoring + boost.
 
     // Every 10th jellyfish hit (re)triggers a 10s x3 boost.
     state.bumperHitCount += 1;

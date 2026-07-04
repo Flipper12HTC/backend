@@ -179,10 +179,15 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     // meshes) since the GLB has no col_bumper_marker_* geometry, so _derivedBumpers is
     // empty. Prefer GLB-derived markers if present (future maps), else fall back to the
     // hardcoded constants — the frontend mirrors the same list in physics-debug.
-    const bumperSpecs =
+    // Only build bumpers that have a matching jellyfish on the front-screen, so there are
+    // no invisible pop-bumpers the ball bounces off with nothing drawn there. Must mirror
+    // createJellyfishBumpers(scene, ['b2', 'b3'], …) in the front-screen scene.
+    const VISIBLE_BUMPER_IDS = new Set(['b2', 'b3']);
+    const bumperSpecs = (
       this._derivedBumpers.length > 0
         ? this._derivedBumpers.map((b) => ({ ...b, scale: 1 }))
-        : PLAYFIELD.bumpers;
+        : PLAYFIELD.bumpers
+    ).filter((b) => VISIBLE_BUMPER_IDS.has(b.id));
     for (const b of bumperSpecs) {
       this.buildBumper(b);
     }

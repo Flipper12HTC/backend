@@ -12,7 +12,7 @@ const ACTIVE_BUMPERS = ['b2', 'b3'] as const;
 
 describe('bumper physics', () => {
   before(async () => {
-    await physics.init({ wallHeight: 10 });
+    await physics.init();
   });
 
   beforeEach(() => {
