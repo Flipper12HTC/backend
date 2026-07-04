@@ -43,6 +43,11 @@ export interface BallLaunchedEvent {
   payload: { force: number };
 }
 
+export interface BoostChangedEvent {
+  type: 'boost_changed';
+  payload: { active: boolean; multiplier: number; durationMs: number };
+}
+
 // --- Blockchain / tournament events (rendered by the screens, never computed there) ---
 
 export interface WalletConnectedEvent {
@@ -95,6 +100,7 @@ export type GameEvent =
   | GameOverEvent
   | FlipperStateEvent
   | BallLaunchedEvent
+  | BoostChangedEvent
   | WalletConnectedEvent
   | PaymentProgressEvent
   | TournamentUpdateEvent

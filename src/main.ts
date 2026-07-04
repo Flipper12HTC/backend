@@ -8,14 +8,21 @@ import { InMemoryTournamentRepo } from './infrastructure/storage/in-memory-tourn
 import { buildApp, startApp, stopApp } from './interfaces/http/app.js';
 import { tickGame } from './application/use-cases/tick-game.js';
 import { setFlipperState } from './application/use-cases/set-flipper-state.js';
+import { startGame } from './application/use-cases/start-game.js';
+import {
+  createPlungerState,
+  plungerPress,
+  plungerRelease,
+} from './application/use-cases/launch-ball.js';
 import { cancelTournament } from './application/use-cases/cancel-tournament.js';
 import { isInactive } from './domain/tournament.js';
 import { shortenWallet } from './domain/wallet.js';
 import { createInitialState } from './domain/game.js';
+import type { InputSource } from './application/ports/input-source.js';
 
 const physics = new RapierPhysicsWorld();
 const publisher = new FastifyWsPublisher();
-const mqttInput = new MqttInputSource();
+const mqttInput: InputSource = new MqttInputSource();
 
 // Blockchain wiring: gateway impl chosen by env (solana devnet | fake offline).
 const paymentGateway = createPaymentGateway();
@@ -75,8 +82,19 @@ setInterval(() => {
     .catch((err) => app.log.error({ err }, 'tournament auto-cancel failed'));
 }, TOURNAMENT_WATCH_MS);
 
+// Physical buttons (ESP32 → MQTT): white right / white left = flippers,
+// black left = start, black right = restart, front white = launch the ball.
+const plunger = createPlungerState();
 mqttInput.onButtonPress((side) => setFlipperState(physics, publisher, side, true));
 mqttInput.onButtonRelease((side) => setFlipperState(physics, publisher, side, false));
+mqttInput.onStart(() => {
+  if (state.status !== 'running') startGame(state, physics, publisher);
+});
+mqttInput.onRestart(() => startGame(state, physics, publisher));
+mqttInput.onPlunger((pressed) => {
+  if (pressed) plungerPress(plunger);
+  else plungerRelease(plunger, state, physics, publisher);
+});
 mqttInput.connect();
 
 const DT = 1 / 60;
