@@ -6,10 +6,15 @@ import type { WebSocket } from '@fastify/websocket';
 import type { PhysicsWorld } from '../../application/ports/physics-world.js';
 import type { GamePublisher } from '../../application/ports/game-publisher.js';
 import type { ScoreRepo } from '../../application/ports/score-repo.js';
+import type { PaymentGateway } from '../../application/ports/payment-gateway.js';
+import type { PaymentStore } from '../../application/ports/payment-store.js';
+import type { TournamentRepo } from '../../application/ports/tournament-repo.js';
 import type { GameState } from '../../domain/game.js';
 import { registerHealthRoute } from './routes/health.js';
 import { registerGameRoutes } from './routes/game.js';
 import { registerScoreRoutes } from './routes/scores.js';
+import { registerPaymentRoutes } from './routes/payment.js';
+import { registerTournamentRoutes } from './routes/tournament.js';
 import { registerGateway } from './ws/gateway.js';
 
 export interface AppDeps {
@@ -18,6 +23,9 @@ export interface AppDeps {
   publisher: GamePublisher;
   state: GameState;
   scoreRepo?: ScoreRepo;
+  paymentGateway?: PaymentGateway;
+  paymentStore?: PaymentStore;
+  tournamentRepo?: TournamentRepo;
 }
 
 export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
@@ -30,6 +38,21 @@ export async function buildApp(deps: AppDeps): Promise<FastifyInstance> {
   await registerHealthRoute(app);
   await registerGameRoutes(app, deps);
   if (deps.scoreRepo) await registerScoreRoutes(app, deps.scoreRepo);
+  if (deps.paymentGateway && deps.paymentStore) {
+    await registerPaymentRoutes(app, {
+      gateway: deps.paymentGateway,
+      store: deps.paymentStore,
+      publisher: deps.publisher,
+    });
+  }
+  if (deps.paymentGateway && deps.paymentStore && deps.tournamentRepo) {
+    await registerTournamentRoutes(app, {
+      repo: deps.tournamentRepo,
+      gateway: deps.paymentGateway,
+      paymentStore: deps.paymentStore,
+      publisher: deps.publisher,
+    });
+  }
   return app;
 }
 
