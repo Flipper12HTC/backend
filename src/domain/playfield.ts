@@ -3,7 +3,7 @@ export const PLAYFIELD = {
   depth: 16,
   floorThickness: 0.3,
 
-  // Inner playable area — measured from pinball_map_FINAL.glb after scaling.
+  // Inner playable area — measured from FlipperBase.glb after scaling.
   interior: {
     halfWidth: 4.3,
     halfDepth: 7.8,

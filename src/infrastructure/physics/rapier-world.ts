@@ -11,7 +11,6 @@ import { loadPlayfieldGeometry, type BumperPosition } from './glb-loader.js';
 type RapierModule = typeof RapierLib;
 
 interface InitConfig extends Partial<BallConfig> {
-  wallHeight?: number;
   playfieldGlbPath?: string;
 }
 
@@ -257,12 +256,12 @@ export class RapierPhysicsWorld implements PhysicsWorld {
     // always spawns at the drain end of the lane, regardless of the lane mesh extent.
     this._derivedBumpers = geom.derived.bumpers;
 
-    // Sol = base floor trimesh (col_floor_* meshes, stable slope).
-    this.addTrimesh(geom.sol.vertices, geom.sol.indices, { friction: 0.15, restitution: 0.05 });
+    // Floor = base floor trimesh (col_floor_* meshes, stable slope).
+    this.addTrimesh(geom.floor.vertices, geom.floor.indices, { friction: 0.15, restitution: 0.05 });
     // Inclined safety floor: thick box whose tilt is computed from the base floor vertices only.
     // Using only col_floor_* (not col_ref_floor_*) keeps the slope stable so the ball spawn
     // position (Y=0.6) stays above the box surface at Z=6.
-    this.addInclinedFloor(geom.sol.vertices);
+    this.addInclinedFloor(geom.floor.vertices);
     // Reference floor trimesh (col_ref_floor_*): exact visual floor surface for accurate
     // collision. Added separately so it doesn't affect the inclined box slope.
     if (geom.refFloor && geom.refFloor.vertices.length > 0) {
@@ -271,8 +270,8 @@ export class RapierPhysicsWorld implements PhysicsWorld {
         restitution: 0.05,
       });
     }
-    // Murs = walls from GLB (low bounce so ball doesn't fly off surface).
-    this.addTrimesh(geom.murs.vertices, geom.murs.indices, { friction: 0.05, restitution: 0.6 });
+    // Walls = walls from GLB (low bounce so ball doesn't fly off surface).
+    this.addTrimesh(geom.walls.vertices, geom.walls.indices, { friction: 0.05, restitution: 0.6 });
     // Aprons = inlane/outlane guide walls, bottom edge dropped to the floor by the loader
     // so the ball can't roll under them (apron_2 floated 0.31 above the floor).
     if (geom.aprons && geom.aprons.vertices.length > 0) {
@@ -281,10 +280,10 @@ export class RapierPhysicsWorld implements PhysicsWorld {
         restitution: 0.6,
       });
     }
-    // Rampes = full ramp geometry (all face angles) so the ball rolls through the channel.
+    // Ramp = full ramp geometry (all face angles) so the ball rolls through the channel.
     // friction=0 so the ball slides freely up the incline without losing speed to surface drag.
-    if (geom.rampe && geom.rampe.vertices.length > 0) {
-      this.addTrimesh(geom.rampe.vertices, geom.rampe.indices, { friction: 0.0, restitution: 0.3 });
+    if (geom.ramp && geom.ramp.vertices.length > 0) {
+      this.addTrimesh(geom.ramp.vertices, geom.ramp.indices, { friction: 0.0, restitution: 0.3 });
     }
     // Panel = circular loop wall — very low restitution + high friction so the ball follows
     // the curve on hard shots instead of bouncing back into the plunger lane.

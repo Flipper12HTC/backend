@@ -8,7 +8,7 @@ const physics = new RapierPhysicsWorld();
 
 describe('flipper physics', () => {
   before(async () => {
-    await physics.init({ wallHeight: 10 });
+    await physics.init();
   });
 
   beforeEach(() => {

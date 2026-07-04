@@ -28,11 +28,11 @@ export interface DerivedPositions {
 }
 
 export interface PlayfieldGeometry {
-  sol: MeshGeometry; // col_floor_* only — used for addInclinedFloor slope
+  floor: MeshGeometry; // col_floor_* only — used for addInclinedFloor slope
   refFloor: MeshGeometry | null; // col_ref_floor_* — separate trimesh for exact floor collision
-  murs: MeshGeometry;
+  walls: MeshGeometry;
   aprons: MeshGeometry | null;
-  rampe: MeshGeometry | null;
+  ramp: MeshGeometry | null;
   frameWalls: MeshGeometry | null; // col_wall_frame_* — extracted without the inLane filter
   panel: MeshGeometry | null; // col_wall_panel — circular loop, low restitution so ball follows the curve
   guides: Float32Array[]; // solid convex hulls (point clouds) for the thin guide/slingshot meshes
@@ -45,7 +45,7 @@ export interface LoadOptions {
 }
 
 /**
- * Load playfield meshes from pinball_map_FINAL.glb.
+ * Load playfield meshes from FlipperBase.glb.
  *
  * Coordinate remapping (GLB uses Z-up, Blender XY plane = table surface):
  *   GLB X → physics X  (table width, left-right)
@@ -153,9 +153,7 @@ export async function loadPlayfieldGeometry(
       b: [number, number, number],
       c: [number, number, number],
     ) => boolean,
-    vertexTransform?: (v: [number, number, number]) => [number, number, number],
     excludeNames?: readonly string[],
-    doubleSided?: boolean,
   ): MeshGeometry => {
     const patterns = Array.isArray(matchNames) ? matchNames : [matchNames];
     const verts: number[] = [];
@@ -179,7 +177,7 @@ export async function loadPlayfieldGeometry(
             arr[i * 3 + 1] as number,
             arr[i * 3 + 2] as number,
           );
-          tVerts.push(vertexTransform ? vertexTransform(p) : p);
+          tVerts.push(p);
         }
 
         const indices = prim.getIndices();
@@ -199,10 +197,6 @@ export async function loadPlayfieldGeometry(
           kept.add(i0);
           kept.add(i1);
           kept.add(i2);
-          // Double-sided: also add reverse winding so ball hits from both directions.
-          if (doubleSided) {
-            keepTri.push(i0, i2, i1);
-          }
         }
         const remap = new Map<number, number>();
         for (const oldIdx of kept) {
@@ -281,11 +275,11 @@ export async function loadPlayfieldGeometry(
     );
   };
 
-  // Murs: keep any face that's not strictly horizontal (|physics Y normal| < 0.85).
+  // Walls: keep any face that's not strictly horizontal (|physics Y normal| < 0.85).
   // 0.85 keeps everything except quasi-flat floor/ceiling tops, including curved wall
   // sections, slingshot ramps, and dome edges. Anything stricter (e.g. 0.5 / 0.7) was
   // poking gaps in slanted wall sections that the ball squeezed through.
-  const keepMursTri = (
+  const keepWallTri = (
     a: [number, number, number],
     b: [number, number, number],
     c: [number, number, number],
@@ -296,7 +290,7 @@ export async function loadPlayfieldGeometry(
     return Math.abs(n[1]) <= 0.85;
   };
 
-  // Wall meshes — vertical faces become physical collision surfaces (filtered by keepMursTri).
+  // Wall meshes — vertical faces become physical collision surfaces (filtered by keepWallTri).
   // Patterns are matched as substrings against mesh names in the GLB.
   // Adding a `col_wall_*` or `col_ref_*` family in Blender is enough — register here once
   // so the loader auto-collects every mesh whose name contains the substring.
@@ -319,7 +313,7 @@ export async function loadPlayfieldGeometry(
     'col_wall_dome', // col_wall_dome_left/right — merged panel+shooter dome walls
     // col_wall_plunger_lane intentionally omitted — addLaneSeparator() builds a clean box wall.
     // col_wall_apron is in ALL_FACE_MESHES (its slanted faces would otherwise create
-    // sharp launchpads under keepMursTri that catapult the ball into the ceiling).
+    // sharp launchpads under keepWallTri that catapult the ball into the ceiling).
     'col_bumper_mini',
     'col_bumper_targets', // col_bumper_targets + col_bumper_targets_tiny + col_bumper_targets_group
     'col_ref_deco', // col_ref_deco_*
@@ -354,19 +348,19 @@ export async function loadPlayfieldGeometry(
     return Math.abs(n[2]) < 0.8;
   };
 
-  let rampe: MeshGeometry | null = null;
+  let ramp: MeshGeometry | null = null;
   try {
-    rampe = extractMesh(ALL_FACE_MESHES, keepRampTri);
+    ramp = extractMesh(ALL_FACE_MESHES, keepRampTri);
   } catch {
     // None of the all-face meshes present in this GLB — not an error.
   }
 
   // Frame / plunger / flipper ref meshes — extracted WITHOUT the inLane filter because
   // these meshes sit inside the lane zone (X≈3–4.5) and every triangle would otherwise
-  // be stripped by the inLane check in keepMursTri.
-  // keepMursTri_noLane still removes near-horizontal faces (tops/bottoms) so they don't
+  // be stripped by the inLane check in keepWallTri.
+  // keepWallTriNoLane still removes near-horizontal faces (tops/bottoms) so they don't
   // act as launch ramps or trap the ball against the ceiling.
-  const keepMursTri_noLane = (
+  const keepWallTriNoLane = (
     a: [number, number, number],
     b: [number, number, number],
     c: [number, number, number],
@@ -421,7 +415,7 @@ export async function loadPlayfieldGeometry(
 
   let frameWalls: MeshGeometry | null = null;
   try {
-    frameWalls = extractMesh(FRAME_WALL_MESHES, keepMursTri_noLane, undefined, SPECIAL_MESHES);
+    frameWalls = extractMesh(FRAME_WALL_MESHES, keepWallTriNoLane, SPECIAL_MESHES);
   } catch {
     // None of the frame/ref meshes present in this GLB — not an error.
   }
@@ -539,7 +533,7 @@ export async function loadPlayfieldGeometry(
   if (slingL.length >= 4) guides.push(flatten(raiseTop(slingL)));
   // col_wall_frame_black covers too many heterogeneous Blender objects to filter cleanly
   // without per-mesh renaming. The vertical faces are already included via FRAME_WALL_MESHES
-  // (keepMursTri_noLane). A separate extraction with a looser Y filter caused pockets that
+  // (keepWallTriNoLane). A separate extraction with a looser Y filter caused pockets that
   // trapped the ball. Removed until meshes are renamed in Blender for finer control.
 
   // Base floor meshes (col_floor_*) — used for both the floor trimesh AND the
@@ -703,22 +697,22 @@ export async function loadPlayfieldGeometry(
   }
 
   // col_wall_panel — the circular loop on the right side.
-  // Extracted separately with keepMursTri so only vertical faces get collision,
+  // Extracted separately with keepWallTri so only vertical faces get collision,
   // then loaded with very low restitution in rapier-world so the ball follows the
   // curve instead of bouncing back into the lane on hard shots.
   let panel: MeshGeometry | null = null;
   try {
-    panel = extractMesh(['col_wall_panel'], keepMursTri);
+    panel = extractMesh(['col_wall_panel'], keepWallTri);
   } catch {
     // Not present — fine.
   }
 
   return {
-    sol: extractMesh(floorMeshNames, keepSolTri),
+    floor: extractMesh(floorMeshNames, keepSolTri),
     refFloor,
-    murs: extractMesh(WALL_MESHES, keepMursTri),
+    walls: extractMesh(WALL_MESHES, keepWallTri),
     aprons,
-    rampe,
+    ramp,
     frameWalls,
     panel,
     guides,

@@ -8,7 +8,7 @@ const physics = new RapierPhysicsWorld();
 
 describe('ball physics', () => {
   before(async () => {
-    await physics.init({ restitution: 0.7, wallHeight: 10 });
+    await physics.init({ restitution: 0.7 });
   });
 
   beforeEach(() => {
