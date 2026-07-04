@@ -3,7 +3,12 @@ import type { GamePublisher } from '../ports/game-publisher.js';
 import type { GameState } from '../../domain/game.js';
 import { INITIAL_BALLS, INITIAL_MULTIPLIER } from '../../domain/game.js';
 
-export function startGame(state: GameState, physics: PhysicsWorld, publisher: GamePublisher): void {
+export function startGame(
+  state: GameState,
+  physics: PhysicsWorld,
+  publisher: GamePublisher,
+  now: number = Date.now(),
+): void {
   state.status = 'running';
   state.score = 0;
   state.ballsLeft = INITIAL_BALLS;
@@ -12,7 +17,7 @@ export function startGame(state: GameState, physics: PhysicsWorld, publisher: Ga
   state.boostUntil = null;
   state.activeFlipper = null;
   state.ballInLane = true;
-  state.startedAt = Date.now();
+  state.startedAt = now;
   state.endedAt = null;
 
   physics.resetBall();
