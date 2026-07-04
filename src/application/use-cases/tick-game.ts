@@ -37,6 +37,20 @@ export function tickGame(
   repo?: ScoreRepo,
   now: number = Date.now(),
 ): void {
+  // Expire the x3 boost on wall-clock time — BEFORE the running-guard so a boost triggered
+  // from the idle/over screen (the H demo key) always reverts instead of sticking forever.
+  if (state.boostUntil !== null && Date.now() >= state.boostUntil) {
+    state.boostUntil = null;
+    state.multiplier = INITIAL_MULTIPLIER;
+    publisher.broadcast({
+      type: 'boost_changed',
+      payload: { active: false, multiplier: state.multiplier, durationMs: 0 },
+    });
+    // score_update flips the scoreboard into "running", so only send it while actually
+    // running; on idle/over the pill reverts from the boost_changed multiplier instead.
+    if (state.status === 'running') publishScoreUpdate(state, publisher);
+  }
+
   if (state.status !== 'running') return;
 
   physics.step(dt);
@@ -63,6 +77,9 @@ export function tickGame(
     publisher.broadcast({ type: 'bumper_hit', payload: { id: b.id, x: b.x, z: b.z } });
     scoreChanged = true;
 
+    // The physical "pop" (radial kick) is applied in the physics adapter on contact
+    // (RapierPhysicsWorld.kickBallFromBumper) — here we only handle scoring + boost.
+
     // Every 10th jellyfish hit (re)triggers a 10s x3 boost.
     state.bumperHitCount += 1;
     if (state.bumperHitCount % BUMPER_BOOST_THRESHOLD === 0) {
@@ -83,7 +100,10 @@ export function tickGame(
       },
     });
   }
-  if (scoreChanged) publishScoreUpdate(state, publisher);
+  // Emit score_update on a boost change too (even with no scoring): the multiplier
+  // flipped, and the scoreboard's x{multiplier} pill is driven by score_update — without
+  // this it stays stuck on "x3" after the boost ends.
+  if (scoreChanged || boostChanged) publishScoreUpdate(state, publisher);
   const sep = physics.getLaneSeparatorX();
   if (!state.ballInLane) {
     // Nudge ball toward main field when near far end of lane (Z≈-7 to -8).
